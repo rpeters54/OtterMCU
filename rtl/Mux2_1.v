@@ -26,13 +26,13 @@ module Mux2_1 #(
     input      [WIDTH - 1:0] zero,
     input      [WIDTH - 1:0] one,
     input                    sel,
-    output reg [WIDTH - 1:0] f
+    output reg [WIDTH - 1:0] mux_out
 );
     
     always @(*)  begin
         case(sel)
-            1'b1 : f = one;
-            1'b0 : f = zero;
+            1'b1 : mux_out = one;
+            1'b0 : mux_out = zero;
         endcase
     end
 

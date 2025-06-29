@@ -19,7 +19,7 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
-`include "OPCODES.vh"
+`include "Opcodes.vh"
 
 module CU_FSM (
     input              clk,
@@ -47,35 +47,35 @@ module CU_FSM (
     // state variables and initial values
     reg [2:0] present_state, next_state;
     initial begin
-        present_state <= ST_INIT;
-	next_state    <= ST_INIT;
+        present_state = ST_INIT;
+	    next_state    = ST_INIT;
     end
 
     // state update block
     always @(posedge clk) begin
-	if (rst == '1) begin 
+        if (rst == '1) begin 
             present_state <= ST_INIT;
-	begin else end
+        end else begin
             present_state <= next_state;
-	end
+        end
     end
     
     always @(*) begin
-        pc_w_en   = '0; 
-        rfile_w_en  = '0; 
+        pc_w_en    = '0; 
+        rfile_w_en = '0; 
         mem_we2    = '0; 
         mem_rden1  = '0; 
         mem_rden2  = '0; 
         cu_rst     = '0;
-        csr_we    = '0; 
-        int_taken = '0;
+        csr_we     = '0; 
+        int_taken  = '0;
         case (present_state)
             ST_INIT : begin
-                cu_rst = '1;
+                cu_rst     = '1;
                 next_state = ST_FETCH;
             end
             ST_FETCH : begin
-                mem_rden1 = '1;
+                mem_rden1  = '1;
                 next_state = ST_EXEC;
             end
             ST_EXEC :  begin
@@ -87,22 +87,22 @@ module CU_FSM (
 		        case(opcode) 
                     OPCODE_R_TYPE : begin  //R-Type opcode
                         rfile_w_en = '1;
-                        pc_w_en  = '1;
-                    end
+                        pc_w_en    = '1;
+                    end  
                     OPCODE_I_TYPE_NO_LOAD : begin  //I-Type opcode *logical instructions
                         rfile_w_en = '1;
-                        pc_w_en  = '1;
+                        pc_w_en    = '1;
                     end
                     OPCODE_I_TYPE_JALR : begin  //I-Type opcode *jalr
                         rfile_w_en = '1;
-                        pc_w_en  = '1;
+                        pc_w_en    = '1;
                     end
                     OPCODE_I_TYPE_LOAD : begin  //I-Type opcode *load instructions
-                        mem_rden2   = '1;
+                        mem_rden2  = '1;
                         next_state = ST_WR_BK;
                     end
                     OPCODE_S_TYPE : begin  //S-Type opcode *store instructions
-                        mem_we2  = '1;
+                        mem_we2 = '1;
                         pc_w_en = '1;
                     end
                     OPCODE_B_TYPE : begin  //B-Type opcode;
@@ -110,43 +110,44 @@ module CU_FSM (
                     end
                     OPCODE_LUI : begin  //lui opcode
                         rfile_w_en = '1;
-                        pc_w_en  = '1;
+                        pc_w_en    = '1;
                     end
                     OPCODE_AUIPC : begin  //auipc opcode
                         rfile_w_en = '1;
-                        pc_w_en  = '1;
+                        pc_w_en    = '1;
                     end
                     OPCODE_J_TYPE_JAL : begin  //J-Type opcode *jal
                         rfile_w_en = '1;
-                        pc_w_en  = '1;
+                        pc_w_en    = '1;
                     end
                     OPCODE_INTRPT : begin //intrpt opcode
 		                //true for mret and csrrw
                         pc_w_en = '1;             
                         //only true for csrrw
                         if (func[12] == '1) begin
-                            csr_we   = '1;
+                            csr_we     = '1;
                             rfile_w_en = '1;
                         end
                     end
+                    default : begin end
                 endcase 
             end
 	        //special case for load instructions
             ST_WR_BK : begin        
                 //memory reads require an extra clock cycle
 	            rfile_w_en = '1;
-                pc_w_en  = '1;
+                pc_w_en    = '1;
 	            if (intrpt_vld == '1) begin
                     next_state = ST_INTRPT;
-                begin else end
+                end else begin
                     next_state = ST_FETCH;
                 end
             end
 	        //interrupt routine
             ST_INTRPT : begin
 		        //output signal sent to CSR and DCDR
-                int_taken = '1;
-                pc_w_en  = '1;
+                int_taken  = '1;
+                pc_w_en    = '1;
                 next_state = ST_FETCH;
             end
 	        default : begin 

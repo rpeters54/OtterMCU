@@ -36,14 +36,14 @@ module PC (
     
     reg [31:0] data_in;
     
-    assign next_addr = addr + 3'd4;
+    assign next_addr = addr + 32'd4;
     
     always @(posedge clk) begin
         if (rst) begin
             addr <= 0;
         end else if (w_en) begin
-	    addr <= data_in;
-	end
+            addr <= data_in;
+        end
     end
 
     always @(*) begin

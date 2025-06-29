@@ -20,7 +20,9 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module Otter_MCU (
+module Otter_MCU #(
+    parameter ROM_FILE = "default.mem"
+) (
     input         clk,
     input         rst, 
     input         intrpt, 
@@ -99,7 +101,7 @@ module Otter_MCU (
     // Memory: stores all relevant data and instructions for the program
     //-------------------------------------------------------------------//
 
-    Memory mem (
+    Memory #(ROM_FILE) mem (
         .MEM_CLK(clk), 
         .MEM_RDEN1(mem_rden1), 
         .MEM_RDEN2(mem_rden2),
@@ -181,14 +183,14 @@ module Otter_MCU (
     //----------------------------------------------------------------------------------------//
 
     Branch_Addr_Gen bag (
-        rs1(rfile_r_rs1), 
-        i_type_immed(i_type_immed), 
-        branch_immed(branch_immed), 
-        jump_immed(jump_immed), 
-        prog_count(pc_addr),
-        jal_addr(addr_gen_jal), 
-        branch_addr(addr_gen_branch), 
-        jalr_addr(addr_gen_jalr)
+        .rs1(rfile_r_rs1), 
+        .i_type_immed(i_type_immed), 
+        .branch_immed(branch_immed), 
+        .jump_immed(jump_immed), 
+        .prog_count(pc_addr),
+        .jal_addr(addr_gen_jal), 
+        .branch_addr(addr_gen_branch), 
+        .jalr_addr(addr_gen_jalr)
     );
 
     //-----------------------------------------------------------------------------------------------//

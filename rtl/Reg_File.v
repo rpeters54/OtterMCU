@@ -38,7 +38,7 @@ module Reg_File (
     // r0 is zero forever
     initial begin
         for (int i = 0; i < 32; i++) begin
-            rfile[i] <= 32'd0;
+            rfile[i] = 32'd0;
         end
     end
     

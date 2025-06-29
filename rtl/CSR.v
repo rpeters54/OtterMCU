@@ -50,6 +50,7 @@ module CSR (
                 12'h304 : csr_mie   <= w_data[0];
                 12'h305 : csr_mtvec <= w_data;
                 12'h341 : csr_mepc  <= w_data;
+                default : begin end
             endcase
         end
     end
