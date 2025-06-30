@@ -19,7 +19,7 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
-`include "Opcodes.vh"
+`include "Defines.svh"
 
 module CU_FSM (
     input              clk,
@@ -34,15 +34,8 @@ module CU_FSM (
     output reg         mem_rden2, 
     output reg         cu_rst, 
     output reg         csr_we, 
-    output reg         int_taken
+    output reg         intrpt_taken
 );
-
-    // states
-    localparam ST_INIT   = 3'd0;
-    localparam ST_FETCH  = 3'd1;
-    localparam ST_EXEC   = 3'd2;
-    localparam ST_WR_BK  = 3'd3;
-    localparam ST_INTRPT = 3'd4;
     
     // state variables and initial values
     reg [2:0] present_state, next_state;
@@ -61,14 +54,15 @@ module CU_FSM (
     end
     
     always @(*) begin
-        pc_w_en    = '0; 
-        rfile_w_en = '0; 
-        mem_we2    = '0; 
-        mem_rden1  = '0; 
-        mem_rden2  = '0; 
-        cu_rst     = '0;
-        csr_we     = '0; 
-        int_taken  = '0;
+        pc_w_en      = '0; 
+        rfile_w_en   = '0; 
+        mem_we2      = '0; 
+        mem_rden1    = '0; 
+        mem_rden2    = '0; 
+        cu_rst       = '0;
+        csr_we       = '0; 
+        intrpt_taken = '0;
+
         case (present_state)
             ST_INIT : begin
                 cu_rst     = '1;
@@ -146,7 +140,7 @@ module CU_FSM (
 	        //interrupt routine
             ST_INTRPT : begin
 		        //output signal sent to CSR and DCDR
-                int_taken  = '1;
+                intrpt_taken  = '1;
                 pc_w_en    = '1;
                 next_state = ST_FETCH;
             end

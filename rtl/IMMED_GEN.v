@@ -23,7 +23,7 @@
 Uses concatenation to generate immediates
 {#{value}} means that value is duplicated # times in the output 
 */
-module IMMED_GEN (
+module Immed_Gen (
     input      [31:7] instrn,
     output reg [31:0] upper_immed, 
     output reg [31:0] i_type_immed, 

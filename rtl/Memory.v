@@ -60,13 +60,14 @@ module Memory #(
     input      [1:0]  MEM_SIZE,  // 0-Byte, 1-Half, 2-Word
     input             MEM_SIGN,  // 1-unsigned 0-signed
     input      [31:0] IO_IN,     // Data from IO
-    //output ERR,                // only used for testing
+
+    //output            MISALIGN,  // asserted on misaligned read/write
     output reg        IO_WR,     // IO 1-write 0-read
     output reg [31:0] MEM_DOUT1, // Instruction
     output reg [31:0] MEM_DOUT2  // Data
 );
     
-
+    reg misaligned_write, misaligned_read;
 
     wire [13:0] word_addr_2;
     wire [1:0] byte_offset;
@@ -83,6 +84,7 @@ module Memory #(
     
     assign word_addr_2 = MEM_ADDR2[15:2];
     assign byte_offset = MEM_ADDR2[1:0];     // byte offset of memory address
+   // assign MISALIGN    = misaligned_write | misaligned_read;
          
     // NOT USED IN OTTER
     //Check for misalligned or out of bounds memory accesses
@@ -99,17 +101,18 @@ module Memory #(
     // BRAM requires all reads and writes to occur synchronously
     always @(posedge MEM_CLK) begin
         // save data (WD) to memory (ADDR2)
+        misaligned_write <= '0;
         if (we_addr_vld == 1) begin     // write enable and valid address space
             case({MEM_SIZE,byte_offset})
-                4'b0000: memory[word_addr_2][7:0]   <= MEM_DIN2[7:0];     // sb at byte offsets
-                4'b0001: memory[word_addr_2][15:8]  <= MEM_DIN2[7:0];
-                4'b0010: memory[word_addr_2][23:16] <= MEM_DIN2[7:0];
-                4'b0011: memory[word_addr_2][31:24] <= MEM_DIN2[7:0];
-                4'b0100: memory[word_addr_2][15:0]  <= MEM_DIN2[15:0];    // sh at byte offsets
-                4'b0101: memory[word_addr_2][23:8]  <= MEM_DIN2[15:0];
-                4'b0110: memory[word_addr_2][31:16] <= MEM_DIN2[15:0];
-                4'b1000: memory[word_addr_2]        <= MEM_DIN2;          // sw
-                default : begin end                                     // unsupported size, nop
+                4'b0000 : memory[word_addr_2][7:0]   <= MEM_DIN2[7:0];     // sb at byte offsets
+                4'b0001 : memory[word_addr_2][15:8]  <= MEM_DIN2[7:0];
+                4'b0010 : memory[word_addr_2][23:16] <= MEM_DIN2[7:0];
+                4'b0011 : memory[word_addr_2][31:24] <= MEM_DIN2[7:0];
+                4'b0100 : memory[word_addr_2][15:0]  <= MEM_DIN2[15:0];    // sh at byte offsets
+                4'b0101 : memory[word_addr_2][23:8]  <= MEM_DIN2[15:0];
+                4'b0110 : memory[word_addr_2][31:16] <= MEM_DIN2[15:0];
+                4'b1000 : memory[word_addr_2]        <= MEM_DIN2;          // sw
+                default : misaligned_write           <= '1;                // unsupported size, nop
             endcase
         end
 
@@ -125,28 +128,32 @@ module Memory #(
        
     // Change the data word into sized bytes and sign extend
     always @(*) begin
+        misaligned_read = '0;
         case({MEM_SIGN,MEM_SIZE,byte_offset})
-            5'b00011: mem_read_sized = {{24{mem_read_word[31]}},mem_read_word[31:24]};  // signed byte
-            5'b00010: mem_read_sized = {{24{mem_read_word[23]}},mem_read_word[23:16]};
-            5'b00001: mem_read_sized = {{24{mem_read_word[15]}},mem_read_word[15:8]};
-            5'b00000: mem_read_sized = {{24{mem_read_word[7]}},mem_read_word[7:0]};
+            5'b00011 : mem_read_sized = {{24{mem_read_word[31]}},mem_read_word[31:24]};  // signed byte
+            5'b00010 : mem_read_sized = {{24{mem_read_word[23]}},mem_read_word[23:16]};
+            5'b00001 : mem_read_sized = {{24{mem_read_word[15]}},mem_read_word[15:8]};
+            5'b00000 : mem_read_sized = {{24{mem_read_word[7]}},mem_read_word[7:0]};
                                         
-            5'b00110: mem_read_sized = {{16{mem_read_word[31]}},mem_read_word[31:16]};  // signed half
-            5'b00101: mem_read_sized = {{16{mem_read_word[23]}},mem_read_word[23:8]};
-            5'b00100: mem_read_sized = {{16{mem_read_word[15]}},mem_read_word[15:0]};
+            5'b00110 : mem_read_sized = {{16{mem_read_word[31]}},mem_read_word[31:16]};  // signed half
+            5'b00101 : mem_read_sized = {{16{mem_read_word[23]}},mem_read_word[23:8]};
+            5'b00100 : mem_read_sized = {{16{mem_read_word[15]}},mem_read_word[15:0]};
                 
-            5'b01000: mem_read_sized = mem_read_word;                   // word
+            5'b01000 : mem_read_sized = mem_read_word;                   // word
                   
-            5'b10011: mem_read_sized = {24'd0,mem_read_word[31:24]};    // unsigned byte
-            5'b10010: mem_read_sized = {24'd0,mem_read_word[23:16]};
-            5'b10001: mem_read_sized = {24'd0,mem_read_word[15:8]};
-            5'b10000: mem_read_sized = {24'd0,mem_read_word[7:0]};
+            5'b10011 : mem_read_sized = {24'd0,mem_read_word[31:24]};    // unsigned byte
+            5'b10010 : mem_read_sized = {24'd0,mem_read_word[23:16]};
+            5'b10001 : mem_read_sized = {24'd0,mem_read_word[15:8]};
+            5'b10000 : mem_read_sized = {24'd0,mem_read_word[7:0]};
                   
-            5'b10110: mem_read_sized = {16'd0,mem_read_word[31:16]};    // unsigned half
-            5'b10101: mem_read_sized = {16'd0,mem_read_word[23:8]};
-            5'b10100: mem_read_sized = {16'd0,mem_read_word[15:0]};
+            5'b10110 : mem_read_sized = {16'd0,mem_read_word[31:16]};    // unsigned half
+            5'b10101 : mem_read_sized = {16'd0,mem_read_word[23:8]};
+            5'b10100 : mem_read_sized = {16'd0,mem_read_word[15:0]};
                 
-            default:  mem_read_sized = 32'b0;     // unsupported size, byte offset combination
+            default  : begin // unsupported size, byte offset combination, assert misalignment
+                mem_read_sized  = 32'b0;    
+                misaligned_read = '1;
+            end
         endcase
     end
  

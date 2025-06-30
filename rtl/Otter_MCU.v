@@ -66,7 +66,7 @@ module Otter_MCU #(
     
     // CU_FSM wires
     wire pc_w_en, rfile_w_en, mem_we2, mem_rden1, 
-         mem_rden2, cu_rst, csr_WE, int_taken, intrpt_vld;
+         mem_rden2, cu_rst, csr_WE, intrpt_taken, intrpt_vld;
         
     // CSR wires
     wire        csr_mie;
@@ -144,7 +144,7 @@ module Otter_MCU #(
     // Immediate Generator: creates all types of immediates needed for different instructions
     //----------------------------------------------------------------------------------------//
 
-    IMMED_GEN imd (
+    Immed_Gen imd (
         .instrn(mem_inst_out[31:7]),
         .upper_immed(upper_immed), 
         .i_type_immed(i_type_immed), 
@@ -213,7 +213,7 @@ module Otter_MCU #(
         .opcode(mem_inst_out[6:0]),
         .func(mem_inst_out[14:12]),
         .instrn_bit_30(mem_inst_out[30]), 
-        .int_taken(int_taken), 
+        .intrpt_taken(intrpt_taken), 
         .br_eq(cond_gen_eq), 
         .br_lt(cond_gen_lt), 
         .br_ltu(cond_gen_ltu),
@@ -242,7 +242,7 @@ module Otter_MCU #(
         .mem_rden2(mem_rden2), 
         .cu_rst(cu_rst), 
         .csr_we(csr_WE), 
-        .int_taken(int_taken)
+        .intrpt_taken(intrpt_taken)
     );
     
     //----------------------------------------------------------------------//
@@ -251,7 +251,7 @@ module Otter_MCU #(
     CSR csr (
         .clk(clk),
         .rst(cu_rst), 
-        .int_taken(int_taken), 
+        .intrpt_taken(intrpt_taken), 
         .w_en(csr_WE),
         .addr(mem_inst_out[31:20]),
         .prog_count(pc_addr), 

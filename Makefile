@@ -1,11 +1,11 @@
-INC_DIR := ./include
 
-RTL_SRCS 	:= $(shell find rtl -name '*.sv' -or -name '*.v')
 
-INCLUDE_DIRS := $(sort $(dir $(shell find . -name '*.svh')))
+RTL_SRCS 	 := $(shell find rtl -name '*.sv' -or -name '*.v')
+INCLUDE_DIRS := $(sort $(dir $(shell find . -name '*.svh' -or -name '*.vh')))
 RTL_DIRS	 := $(sort $(dir $(RTL_SRCS)))
+
 # Include both Include and RTL directories for linting
-LINT_INCLUDES := $(foreach dir, $(INCLUDE_DIRS) $(RTL_DIRS), -I$(realpath $(dir))) -I$(PDKPATH) 
+LINT_INCLUDES := $(foreach dir, $(INCLUDE_DIRS) $(RTL_DIRS), -I$(realpath $(dir)))
 
 TEST_DIR = ./tests
 TEST_SUBDIRS = $(shell cd $(TEST_DIR) && ls -d */ | grep -v "__pycache__" )
@@ -14,26 +14,19 @@ TESTS = $(TEST_SUBDIRS:/=)
 # Main Linter and Simulatior is Verilator
 LINTER := verilator
 SIMULATOR := verilator
-SIMULATOR_ARGS := --binary --timing --trace --trace-structs \
-	--assert --timescale 1ns --quiet  
+SIMULATOR_ARGS := --binary --timing --trace --trace-structs --assert --timescale 1ns --quiet  
 SIMULATOR_BINARY := ./obj_dir/V*
+SIMULATOR_RUNNER := 
 SIMULATOR_SRCS := *.sv
+
 # Optional use of Icarus as Linter and Simulator
 ifdef ICARUS
 SIMULATOR := iverilog
-SIMULATOR_ARGS := -g2012
+SIMULATOR_ARGS := -g2012 -grelative-include
 SIMULATOR_BINARY := a.out
-SIMULATOR_SRCS := $(foreach src, $(RTL_SRCS), $(realpath $(src))) *.sv
-SIM_TOP := `$(shell pwd)/scripts/top.sh -s`
-# LINT_INCLUDES := ""
-endif
-# Gate Level Verification
-ifdef GL
-SIMULATOR := iverilog
-LINT_INCLUDES := -I$(PDKPATH) -I$(realpath gl)
-SIMULATOR_ARGS := -g2012 -DFUNCTIONAL -DUSE_POWER_PINS 
-SIMULATOR_BINARY := a.out
-SIMULATOR_SRCS = $(realpath gl)/* *.sv
+SIMULATOR_RUNNER := vvp
+SIMULATOR_SRCS = $(foreach src, $(RTL_SRCS), $(realpath $(src))) $@.sv
+SIM_TOP = -s $@ 
 endif
 
 LINT_OPTS += --lint-only --timing $(LINT_INCLUDES)
@@ -84,56 +77,40 @@ tests/%: FORCE
 itests: 
 	@ICARUS=1 make tests
 
-gl_tests:
-	@mkdir -p gl
-	@cp runs/recent/final/pnl/* gl/
-	@cat scripts/gatelevel.vh gl/*.v > gl/temp
-	@mv -f gl/temp gl/*.v
-	@rm -f gl/temp
-	@GL=1 make tests
 
 .PHONY: $(TESTS)
-$(TESTS): 
+$(TESTS):
 	@printf "\n$(GREEN)$(BOLD) ----- Running Test: $@ ----- $(RESET)\n"
 	@printf "\n$(BOLD) Building with $(SIMULATOR)... $(RESET)\n"
 
 # Build With Simulator
-	@cd $(TEST_DIR)/$@;\
-		$(SIMULATOR) $(SIMULATOR_ARGS) $(SIMULATOR_SRCS) $(LINT_INCLUDES) $(SIM_TOP) > build.log
-	
+	@cd $(TEST_DIR)/$@; \
+		$(SIMULATOR) $(SIMULATOR_ARGS) $(LINT_INCLUDES) $(SIM_TOP) $(SIMULATOR_SRCS) >> build.log
+
 	@printf "\n$(BOLD) Running... $(RESET)\n"
 
 # Run Binary and Check for Error in Result
 	@if cd $(TEST_DIR)/$@;\
-		./$(SIMULATOR_BINARY) > results.log \
-		&& !( cat results.log | grep -qi error ) \
-		then \
-			printf "$(GREEN)PASSED $@$(RESET)\n"; \
-		else \
-			printf "$(RED)FAILED $@$(RESET)\n"; \
-			cat results.log; \
-		fi; \
+    	$(SIMULATOR_RUNNER) ./$(SIMULATOR_BINARY) > results.log \
+    	&& !( cat results.log | grep -qi error ) \
+    	then \
+    		printf "$(GREEN)PASSED $@$(RESET)\n"; \
+    	else \
+        	printf "$(RED)FAILED $@$(RESET)\n"; \
+        	cat results.log; \
+    	fi; \
+
 
 COCOTEST_DIR = ./cocotests
 COCOTEST_SUBDIRS = $(shell cd $(COCOTEST_DIR) && ls -d */ | grep -v "__pycache__" )
 COCOTESTS = $(COCOTEST_SUBDIRS:/=)
+
 .PHONY: cocotests
 cocotests:
 	@$(foreach test,  $(COCOTESTS), make -sC $(COCOTEST_DIR)/$(test);)
 
-OPENLANE_CONF ?= config.*
-openlane:
-	@`which openlane` --flow Classic $(OPENLANE_CONF)
-	@cd runs && rm -f recent && ln -sf `ls | tail -n 1` recent
-
-%.json %.yaml: FORCE
-	@echo $@
-	OPENLANE_CONF=$@ make openlane
 
 FORCE: ;
-
-openroad:
-	scripts/openroad_launch.sh | openroad
 
 .PHONY: clean
 clean:
@@ -141,9 +118,5 @@ clean:
 	rm -f `find tests -iname "a.out"`
 	rm -f `find tests -iname "*.log"`
 	rm -rf `find tests -iname "obj_dir"`
-
-.PHONY: VERILOG_SOURCES
-VERILOG_SOURCES: 
-	@echo $(realpath $(RTL_SRCS))
 
 

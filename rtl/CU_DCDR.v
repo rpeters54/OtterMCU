@@ -19,13 +19,13 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
-`include "Opcodes.vh"
+`include "Defines.svh"
 
 module CU_DCDR (
     input      [6:0]   opcode,
     input      [14:12] func,
     input              instrn_bit_30, 
-    input              int_taken, 
+    input              intrpt_taken, 
     input              br_eq, 
     input              br_lt, 
     input              br_ltu,
@@ -36,88 +36,87 @@ module CU_DCDR (
     output reg [1:0]   rfile_w_sel
 );
 
-    
     reg comparison;
     
     always @(*) begin
-	alu_func      = '0; 
-	alu_src_sel_a = '0; 
-	alu_src_sel_b = '0;
-    pc_src_sel    = '0; 
-	rfile_w_sel   = '0; 
-	comparison    = '0;
+        alu_func      = '0; 
+        alu_src_sel_a = '0; 
+        alu_src_sel_b = '0;
+        pc_src_sel    = '0; 
+        rfile_w_sel   = '0; 
+        comparison    = '0;
 	
-	if (int_taken == '1) begin  //Interrupt Case
+        if (intrpt_taken == '1) begin  // Interrupt Case
             pc_src_sel = 'd4;
-	end else begin
+        end else begin
             case(opcode)
-                OPCODE_R_TYPE : begin  //R-Type opcode
-                    alu_src_sel_a = 'd0;   //arithmetic/logical operations including two registers
+                OPCODE_R_TYPE : begin    // R-Type opcode
+                    alu_src_sel_a = 'd0; // arithmetic/logical operations including two registers
                     alu_src_sel_b = 'd0;
                     rfile_w_sel   = 'd3;
                     pc_src_sel    = 'd0;
-                    alu_func = {instrn_bit_30, func};    //alu_func varies based on command
+                    alu_func = {instrn_bit_30, func}; // alu_func varies based on command
                 end
-                OPCODE_I_TYPE_NO_LOAD : begin  //I-Type opcode *no loading
-                    alu_src_sel_a = 'd0;   //arithmetic/logical operations including a register
-                    alu_src_sel_b = 'd1;    //and an immediate
+                OPCODE_I_TYPE_NO_LOAD : begin // I-Type opcode *no loading
+                    alu_src_sel_a = 'd0;      // arithmetic/logical operations including a register
+                    alu_src_sel_b = 'd1;      // and an immediate
                     rfile_w_sel   = 'd3;
                     pc_src_sel    = 'd0;
-                    alu_func = {1'b0, func};        //alu_func varies based on command
-		            if (func == 3'b101) begin            //if-statement caused by immediate
+                    alu_func = {1'b0, func};  // alu_func varies based on command
+		            if (func == 3'b101) begin // if-statement caused by immediate
                         alu_func = {instrn_bit_30, func};
 	                end
                 end
-                OPCODE_I_TYPE_JALR : begin  //I-Type opcode *jalr
-                    pc_src_sel  = 'd1;   //jumps and links to the value stored in rs1
-                    rfile_w_sel = 'd0;      //added to an I-Type immediate
+                OPCODE_I_TYPE_JALR : begin // I-Type opcode *jalr
+                    pc_src_sel  = 'd1;     // jumps and links to the value stored in rs1
+                    rfile_w_sel = 'd0;     // added to an I-Type immediate
                 end
-                OPCODE_I_TYPE_LOAD : begin  //I-Type opcode *load instructions
-                    alu_src_sel_a = 'd0;   //All load instructions; writing from memory to registers
+                OPCODE_I_TYPE_LOAD : begin // I-Type opcode *load instructions
+                    alu_src_sel_a = 'd0;   // All load instructions; writing from memory to registers
                     alu_src_sel_b = 'd1;
                     alu_func      = 'd0;
                     rfile_w_sel   = 'd2;
                     pc_src_sel    = 'd0;
                 end
-                OPCODE_S_TYPE : begin  //S-Type opcode *store instructions
-                    alu_src_sel_a = 'd0;   //All store instructions; writing from registers to memory
+                OPCODE_S_TYPE : begin    // S-Type opcode *store instructions
+                    alu_src_sel_a = 'd0; // All store instructions; writing from registers to memory
                     alu_src_sel_b = 'd2;
                     alu_func      = 'd0;
                     pc_src_sel    = 'd0;
                 end
-                OPCODE_B_TYPE : begin  //B-Type opcode
+                OPCODE_B_TYPE : begin  // B-Type opcode
                     case(func[14:13])
                         2'd0    : comparison = br_eq;
                         2'd2    : comparison = br_lt;
                         2'd3    : comparison = br_ltu;
                         default : comparison = '0;
                     endcase
-		            if (comparison != func[12]) begin      //given instruction, output is based on condition
+		            if (comparison != func[12]) begin // given instruction, output is based on condition
                         pc_src_sel = 'd2;
                     end
                 end
-                OPCODE_LUI : begin  //lui opcode
-                    alu_src_sel_a = 'd1;    //Extends a 20-bit immediate (extra 12-bits after)
-                    alu_func      = 'd9;  //Value passes through ALU and is stored in a register
+                OPCODE_LUI : begin       // lui opcode
+                    alu_src_sel_a = 'd1; // Extends a 20-bit immediate (extra 12-bits after)
+                    alu_func      = 'd9; // Value passes through ALU and is stored in a register
                     rfile_w_sel   = 'd3;
                     pc_src_sel    = 'd0;
                 end
-                OPCODE_AUIPC : begin  //auipc opcode
-                   alu_src_sel_a = 'd1;     //Adds a U-type immediate to the program count
-                   alu_src_sel_b = 'd3;     //which is stored in a register
+                OPCODE_AUIPC : begin    // auipc opcode
+                   alu_src_sel_a = 'd1; // Adds a U-type immediate to the program count
+                   alu_src_sel_b = 'd3; // which is stored in a register
                    alu_func      = 'd0;
                    rfile_w_sel   = 'd3;
                    pc_src_sel    = 'd0;
                 end
-                OPCODE_J_TYPE_JAL : begin  //J-Type opcode *jal
-                   pc_src_sel  = 'd3;    //Jumps to a new location (updates PC value)
-                   rfile_w_sel = 'd0;       //stores current location + 4 in a register
+                OPCODE_J_TYPE_JAL : begin // J-Type opcode *jal
+                   pc_src_sel  = 'd3;     // Jumps to a new location (updates PC value)
+                   rfile_w_sel = 'd0;     // stores current location + 4 in a register
                 end
-                OPCODE_INTRPT : begin //INTR opcode
-                    if (func[12] == '1) begin      //csrrw
+                OPCODE_INTRPT : begin         // INTR opcode
+                    if (func[12] == '1) begin // csrrw
                         rfile_w_sel = 'd1;           
                         pc_src_sel  = 'd0;
-                    end else begin                  //mret
+                    end else begin            // mret
                         pc_src_sel = 'd5;
                     end
                 end

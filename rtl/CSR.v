@@ -19,11 +19,12 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
+`include "Defines.svh"
 
 module CSR (
     input             clk,
     input             rst, 
-    input             int_taken, 
+    input             intrpt_taken, 
     input             w_en,
     input      [11:0] addr,
     input      [31:0] prog_count, 
@@ -33,24 +34,24 @@ module CSR (
     output reg [31:0] csr_mtvec, 
     output reg [31:0] r_data
 );
-    
+
     always @ (posedge clk) begin
 	    //reset all registers to zero
-        if (rst == 1'b1) begin
-            csr_mepc  <= 0; 
-            csr_mtvec <= 0; 
-            csr_mie   <= 0;
+        if (rst == '1) begin
+            csr_mepc  <= '0; 
+            csr_mtvec <= '0; 
+            csr_mie   <= '0;
 	    //interrupt state
-        end else if (int_taken == 1'b1) begin
-            csr_mie  <= 0; 
+        end else if (intrpt_taken == '1) begin
+            csr_mie  <= '0; 
             csr_mepc <= prog_count;
 	    //synchronous write (used by csrrw)
-        end else if (w_en == 1'b1) begin
+        end else if (w_en == '1) begin
             case (addr) 
-                12'h304 : csr_mie   <= w_data[0];
-                12'h305 : csr_mtvec <= w_data;
-                12'h341 : csr_mepc  <= w_data;
-                default : begin end
+                CSR_MIE_ADDR   : csr_mie   <= w_data[0];
+                CSR_MTVEC_ADDR : csr_mtvec <= w_data;
+                CSR_MEPC_ADDR  : csr_mepc  <= w_data;
+                default        : begin end
             endcase
         end
     end
@@ -59,10 +60,10 @@ module CSR (
     always @(*) begin
 	    //r_data value is based on the addr input
         case (addr)
-            12'h304 : r_data = {31'd0, csr_mie};
-            12'h305 : r_data = csr_mtvec;
-            12'h341 : r_data = csr_mepc;
-	        default : r_data = '0;
+            CSR_MIE_ADDR   : r_data = {31'd0, csr_mie};
+            CSR_MTVEC_ADDR : r_data = csr_mtvec;
+            CSR_MEPC_ADDR  : r_data = csr_mepc;
+	        default        : r_data = '0;
         endcase
     end
 
