@@ -21,20 +21,18 @@
 
 
 module Branch_Addr_Gen (
-    input      [31:0] rs1, 
-    input      [31:0] i_type_immed, 
-    input      [31:0] branch_immed, 
-    input      [31:0] jump_immed, 
-    input      [31:0] prog_count,
-    output reg [31:0] jal_addr, 
-    output reg [31:0] branch_addr, 
-    output reg [31:0] jalr_addr
+    input  [31:0] rs1, 
+    input  [31:0] i_type_immed, 
+    input  [31:0] branch_immed, 
+    input  [31:0] jump_immed, 
+    input  [31:0] prog_count,
+    output [31:0] jal_addr, 
+    output [31:0] branch_addr, 
+    output [31:0] jalr_addr
 );
     
-    always @(*) begin
-        jal_addr    = jump_immed   + prog_count;
-        branch_addr = branch_immed + prog_count;
-        jalr_addr   = i_type_immed + rs1;
-    end
+    assign jal_addr    = jump_immed   + prog_count;
+    assign branch_addr = branch_immed + prog_count;
+    assign jalr_addr   = i_type_immed + rs1;
 
 endmodule

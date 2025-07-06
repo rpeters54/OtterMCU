@@ -49,8 +49,9 @@ module Otter_MCU #(
     wire [31:0] upper_immed, i_type_immed, s_type_immed, 
                 branch_immed, jump_immed;
 
-    // ALU wires
-    wire [31:0] alu_src_a, alu_src_b, alu_result;
+    // ALU connections
+    wire [31:0] alu_result;
+    reg  [31:0] alu_src_a, alu_src_b;
 
     // Branch_Addr_Gen wires
     wire [31:0] addr_gen_jalr, addr_gen_branch, addr_gen_jal;
@@ -65,8 +66,9 @@ module Otter_MCU #(
     wire [3:0] alu_func;
     
     // CU_FSM wires
-    wire pc_w_en, rfile_w_en, mem_we2, mem_rden1, 
-         mem_rden2, cu_rst, csr_WE, intrpt_taken, intrpt_vld;
+    wire pc_w_en, rfile_w_en, mem_we2, mem_rden1, mem_misalign,
+         mem_rden2, cu_rst, csr_WE, intrpt_taken, intrpt_vld,
+         pc_misalign;
         
     // CSR wires
     wire        csr_mie;
@@ -93,6 +95,7 @@ module Otter_MCU #(
         .jal(addr_gen_jal),
         .mtvec(csr_mtvec),
         .mepc(csr_mepc),
+        .pc_misalign(pc_misalign),
         .addr(pc_addr),
         .next_addr(pc_next_addr)
     );
@@ -111,6 +114,7 @@ module Otter_MCU #(
         .MEM_DIN2(rfile_r_rs2), 
         .MEM_SIZE(mem_inst_out[13:12]), 
         .MEM_SIGN(mem_inst_out[14]), 
+        .MISALIGN(mem_misalign),
         .IO_IN(iobus_in), 
         .IO_WR(iobus_wr),
         .MEM_DOUT1(mem_inst_out), 
@@ -156,21 +160,19 @@ module Otter_MCU #(
     //-----------------------------------------------------------------------//
     // ALU w/ Input MUXES: location of all logical and arithmetic operations
     //-----------------------------------------------------------------------//
-
-    Mux2_1 #(32) src_a_mux (
-        .zero(rfile_r_rs1), 
-        .one(upper_immed), 
-        .sel(alu_src_sel_a), 
-        .mux_out(alu_src_a)
-    );
-    Mux4_1 #(32) src_b_mux (
-        .zero(rfile_r_rs2), 
-        .one(i_type_immed), 
-        .two(s_type_immed), 
-        .three(pc_addr), 
-        .sel(alu_src_sel_b), 
-        .mux_out(alu_src_b)
-    );
+ 
+    always @(*) begin
+        case (alu_src_sel_a)
+            1'd0 : alu_src_a = rfile_r_rs1;
+            1'd1 : alu_src_a = upper_immed;
+        endcase
+        case (alu_src_sel_b) 
+            2'd0 : alu_src_b = rfile_r_rs2;
+            2'd1 : alu_src_b = i_type_immed;
+            2'd2 : alu_src_b = s_type_immed;
+            2'd3 : alu_src_b = pc_addr;
+        endcase
+    end
     ALU alu (
         .src_a(alu_src_a), 
         .src_b(alu_src_b),
@@ -232,9 +234,10 @@ module Otter_MCU #(
     CU_FSM fsm (
         .clk(clk),
         .rst(rst),
+        .pc_misalign(pc_misalign),
+        .mem_misalign(mem_misalign),
         .intrpt_vld(intrpt_vld),
-        .opcode(mem_inst_out[6:0]),
-        .func(mem_inst_out[14:12]),
+        .instrn(mem_inst_out),
         .pc_w_en(pc_w_en), 
         .rfile_w_en(rfile_w_en), 
         .mem_we2(mem_we2), 
@@ -248,6 +251,7 @@ module Otter_MCU #(
     //----------------------------------------------------------------------//
     // Control State Registers: handles interrupt state data and triggering
     //----------------------------------------------------------------------//
+    
     CSR csr (
         .clk(clk),
         .rst(cu_rst), 

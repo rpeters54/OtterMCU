@@ -1,5 +1,4 @@
-
-
+# Find paths to RTL and include files
 RTL_SRCS 	 := $(shell find rtl -name '*.sv' -or -name '*.v')
 INCLUDE_DIRS := $(sort $(dir $(shell find . -name '*.svh' -or -name '*.vh')))
 RTL_DIRS	 := $(sort $(dir $(RTL_SRCS)))
@@ -11,6 +10,10 @@ TEST_DIR = ./tests
 TEST_SUBDIRS = $(shell cd $(TEST_DIR) && ls -d */ | grep -v "__pycache__" )
 TESTS = $(TEST_SUBDIRS:/=)
 
+FV_DIR = ./fv
+FV_SUBDIRS = $(shell cd $(FV_DIR) && ls -d */ | grep -v "__pycache__" )
+FV_TESTS = $(FV_SUBDIRS:/=)
+
 # Main Linter and Simulatior is Verilator
 LINTER := verilator
 SIMULATOR := verilator
@@ -18,6 +21,12 @@ SIMULATOR_ARGS := --binary --timing --trace --trace-structs --assert --timescale
 SIMULATOR_BINARY := ./obj_dir/V*
 SIMULATOR_RUNNER := 
 SIMULATOR_SRCS := *.sv
+
+# Formal Verification with SBY
+VERIFIER := sby
+VERIFIER_ARGS := -f
+SBY_JOB_TYPE ?= bmc
+JOB_TYPES = bmc prove cover
 
 # Optional use of Icarus as Linter and Simulator
 ifdef ICARUS
@@ -32,10 +41,10 @@ endif
 LINT_OPTS += --lint-only --timing $(LINT_INCLUDES)
 
 # Text formatting for tests
-BOLD = `tput bold`
+BOLD  = `tput bold`
 GREEN = `tput setaf 2`
 ORANG = `tput setaf 214`
-RED = `tput setaf 1`
+RED   = `tput setaf 1`
 RESET = `tput sgr0`
 
 TEST_GREEN := $(shell tput setaf 2)
@@ -68,7 +77,6 @@ lint_top:
 	@printf "Linting Top Level Module: $(TOP_FILE)\n";
 	$(LINTER) $(LINT_OPTS) --top-module $(TOP_MODULE) $(TOP_FILE)
 
-
 tests: $(TESTS) 
 
 tests/%: FORCE
@@ -77,7 +85,12 @@ tests/%: FORCE
 itests: 
 	@ICARUS=1 make tests
 
+fv: $(FV_TESTS)
 
+fv/%: FORCE
+	make -s $(subst /,, $(basename $*))
+
+# Simulation test targets
 .PHONY: $(TESTS)
 $(TESTS):
 	@printf "\n$(GREEN)$(BOLD) ----- Running Test: $@ ----- $(RESET)\n"
@@ -100,23 +113,33 @@ $(TESTS):
         	cat results.log; \
     	fi; \
 
+# Formal verification test targets
+.PHONY: $(FV_TESTS)
+$(FV_TESTS):
+	@printf "\n$(GREEN)$(BOLD) ----- Running Formal Verif: $@ ----- $(RESET)\n"
 
-COCOTEST_DIR = ./cocotests
-COCOTEST_SUBDIRS = $(shell cd $(COCOTEST_DIR) && ls -d */ | grep -v "__pycache__" )
-COCOTESTS = $(COCOTEST_SUBDIRS:/=)
-
-.PHONY: cocotests
-cocotests:
-	@$(foreach test,  $(COCOTESTS), make -sC $(COCOTEST_DIR)/$(test);)
-
+# Run and check for error
+	@printf "\n$(BOLD) Running with job type: $(SBY_JOB_TYPE)... $(RESET)\n"
+	@if cd $(FV_DIR)/$@;\
+		$(VERIFIER) $(VERIFIER_ARGS) $@.sby $(SBY_JOB_TYPE) > results.log \
+    	&& (cat results.log | grep -qi "PASS") \
+    	then \
+    		printf "$(GREEN)PASSED $@$(RESET)\n"; \
+    	else \
+        	printf "$(RED)FAILED $@$(RESET)\n"; \
+        	cat results.log; \
+    	fi; \
 
 FORCE: ;
 
 .PHONY: clean
 clean:
-	rm -f `find tests -iname "*.vcd"`
-	rm -f `find tests -iname "a.out"`
-	rm -f `find tests -iname "*.log"`
+	rm -f  `find tests -iname "*.vcd"`
+	rm -f  `find tests -iname "a.out"`
+	rm -f  `find tests -iname "*.log"`
 	rm -rf `find tests -iname "obj_dir"`
+	rm -f `find fv -iname "*.log"`
+	$(foreach fv_test,$(FV_TESTS),$(foreach job_type,$(JOB_TYPES),rm -rf `find fv/$(fv_test) -mindepth 1 -iname "$(fv_test)_$(job_type)"`;))
+	$(foreach fv_test,$(FV_TESTS),rm -rf `find fv/$(fv_test) -mindepth 1 -iname "$(fv_test)"`;)
 
 

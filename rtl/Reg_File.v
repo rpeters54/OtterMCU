@@ -21,14 +21,14 @@
 
 
 module Reg_File (
-    input             clk,
-    input      [4:0]  r_addr1, 
-    input      [4:0]  r_addr2, 
-    input             w_en,
-    input      [4:0]  w_addr,
-    input      [31:0] w_data,
-    output reg [31:0] r_rs1, 
-    output reg [31:0] r_rs2
+    input         clk,
+    input  [4:0]  r_addr1, 
+    input  [4:0]  r_addr2, 
+    input         w_en,
+    input  [4:0]  w_addr,
+    input  [31:0] w_data,
+    output [31:0] r_rs1, 
+    output [31:0] r_rs2
 );
     
     // 32, 32-bit registers
@@ -43,11 +43,9 @@ module Reg_File (
     end
     
     // dual read functionality
-    always @(*) begin
-	    // select output register value by address
-        r_rs1 = rfile[r_addr1];
-        r_rs2 = rfile[r_addr2]; 
-    end
+	// select output register value by address
+    assign r_rs1 = rfile[r_addr1];
+    assign r_rs2 = rfile[r_addr2]; 
     
     // single write functionality
     always @(posedge clk) begin

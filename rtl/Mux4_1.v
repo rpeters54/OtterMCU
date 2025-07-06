@@ -37,7 +37,6 @@ module Mux4_1 #(
             2'd1:    mux_out = one;
             2'd2:    mux_out = two;
             2'd3:    mux_out = three;
-            default: mux_out = '0;
         endcase
     end
 endmodule

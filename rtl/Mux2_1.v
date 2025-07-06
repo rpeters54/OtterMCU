@@ -23,17 +23,12 @@
 module Mux2_1 #(
     parameter WIDTH = 4
 )(
-    input      [WIDTH - 1:0] zero,
-    input      [WIDTH - 1:0] one,
-    input                    sel,
-    output reg [WIDTH - 1:0] mux_out
+    input  [WIDTH-1:0] zero,
+    input  [WIDTH-1:0] one,
+    input              sel,
+    output [WIDTH-1:0] mux_out
 );
     
-    always @(*)  begin
-        case(sel)
-            1'b1 : mux_out = one;
-            1'b0 : mux_out = zero;
-        endcase
-    end
+    assign mux_out = sel ? one : zero;
 
 endmodule

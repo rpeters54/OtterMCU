@@ -30,19 +30,25 @@ module PC (
     input       [31:0] jal, 
     input       [31:0] mtvec, 
     input       [31:0] mepc,
+
+    output             pc_misalign,
     output reg  [31:0] addr,
-    output wire [31:0] next_addr
+    output      [31:0] next_addr
 );
     
+    localparam PC_MASK  = 32'hFFFF_FFFC;
+    localparam LSB_MASK = 32'h0000_0003;
+
     reg [31:0] data_in;
     
-    assign next_addr = addr + 32'd4;
+    assign next_addr   = addr + 'd4;
+    assign pc_misalign = |(data_in & LSB_MASK);
     
     always @(posedge clk) begin
         if (rst) begin
             addr <= 0;
         end else if (w_en) begin
-            addr <= data_in;
+            addr <= data_in & PC_MASK;
         end
     end
 

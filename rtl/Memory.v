@@ -30,9 +30,11 @@
 //    .MEM_SIZE  (),
 //    .MEM_SIGN  (),
 //    .IO_IN     (),
+//    .MISALIGN  (),
 //    .IO_WR     (),
 //    .MEM_DOUT1 (),
-//    .MEM_DOUT2 ()  );
+//    .MEM_DOUT2 ()  
+// );
 //
 // Revision:
 // Revision 0.01 - Original by J. Callenes
@@ -43,12 +45,13 @@
 // Revision 1.06 - removed typo in instantiation template
 // Revision 1.07 - remove unused wordAddr1 signal
 // Revision 1.08 - formatting changes / translation to pure verilog (Riley Peters)
+// Revision 1.09 - added mem alignment check and formal verif support (Riley Peters)
 //
 //////////////////////////////////////////////////////////////////////////////////
 
                                                                                                                              
 module Memory #(
-    parameter ROM_FILE = "default.mem"
+    parameter ROM_FILE = "../mem/memory.mem"
 ) (
     input             MEM_CLK,
     input             MEM_RDEN1, // read enable Instruction
@@ -61,113 +64,268 @@ module Memory #(
     input             MEM_SIGN,  // 1-unsigned 0-signed
     input      [31:0] IO_IN,     // Data from IO
 
-    //output            MISALIGN,  // asserted on misaligned read/write
+    output            MISALIGN,  // asserted on misaligned read/write
     output reg        IO_WR,     // IO 1-write 0-read
     output reg [31:0] MEM_DOUT1, // Instruction
     output reg [31:0] MEM_DOUT2  // Data
 );
+
+    localparam MEM_VIEW = 1'b0;
+    localparam IO_VIEW  = 1'b1;
+
+    localparam UNSIGNED = 1'b1;
+    localparam SIGNED   = 1'b0;
+
+    localparam SIZE_BYTE   = 2'd0;
+    localparam SIZE_H_WORD = 2'd1;
+    localparam SIZE_WORD   = 2'd2;
+
+    //-------------------------//
+    // Memory Block Definition
+    //-------------------------//  
+
+    localparam [31:0] ADDR_SPACE = 2**14;
+    (* rom_style = "{distributed | block}" *)
+    (* ram_decomp = "power" *) reg [31:0] memory [0:ADDR_SPACE-1];
     
-    reg misaligned_write, misaligned_read;
+    initial begin
+        $readmemh(ROM_FILE, memory, 0, ADDR_SPACE);
+    end
+
+    //-----------------//
+    // Local Variables
+    //-----------------//  
+
+    reg [31:0] mem_read_word, io_buffer, mem_read_sized;
+    reg we_addr_vld;    // active when saving (WE) to valid memory address
+    reg io_sel;         // mux select determining whether to look at MEM (0) or IO (1)
 
     wire [13:0] word_addr_2;
     wire [1:0] byte_offset;
-
-    reg [31:0] mem_read_word, io_buffer, mem_read_sized;
-    reg we_addr_vld;      // active when saving (WE) to valid memory address
-       
-    (* rom_style = "{distributed | block}" *)
-    (* ram_decomp = "power" *) reg [31:0] memory [0:16383];
-    
-    initial begin
-        $readmemh(ROM_FILE, memory, 0, 16383);
-    end
-    
     assign word_addr_2 = MEM_ADDR2[15:2];
     assign byte_offset = MEM_ADDR2[1:0];     // byte offset of memory address
-   // assign MISALIGN    = misaligned_write | misaligned_read;
-         
-    // NOT USED IN OTTER
-    //Check for misalligned or out of bounds memory accesses
-    //assign ERR = ((MEM_ADDR1 >= 2**ACTUAL_WIDTH)|| (MEM_ADDR2 >= 2**ACTUAL_WIDTH)
-    //                || MEM_ADDR1[1:0] != 2'b0 || MEM_ADDR2[1:0] !=2'b0)? 1 : 0;
-            
-    // buffer the IO input for reading
-    always @(posedge MEM_CLK) begin
-        if(MEM_RDEN2) begin
-            io_buffer <= IO_IN;
-        end
-    end
     
-    // BRAM requires all reads and writes to occur synchronously
+    //------------------------------//
+    // Synchronous Read/Write Block
+    //------------------------------//  
+    
     always @(posedge MEM_CLK) begin
         // save data (WD) to memory (ADDR2)
-        misaligned_write <= '0;
-        if (we_addr_vld == 1) begin     // write enable and valid address space
-            case({MEM_SIZE,byte_offset})
-                4'b0000 : memory[word_addr_2][7:0]   <= MEM_DIN2[7:0];     // sb at byte offsets
-                4'b0001 : memory[word_addr_2][15:8]  <= MEM_DIN2[7:0];
-                4'b0010 : memory[word_addr_2][23:16] <= MEM_DIN2[7:0];
-                4'b0011 : memory[word_addr_2][31:24] <= MEM_DIN2[7:0];
-                4'b0100 : memory[word_addr_2][15:0]  <= MEM_DIN2[15:0];    // sh at byte offsets
-                4'b0101 : memory[word_addr_2][23:8]  <= MEM_DIN2[15:0];
-                4'b0110 : memory[word_addr_2][31:16] <= MEM_DIN2[15:0];
-                4'b1000 : memory[word_addr_2]        <= MEM_DIN2;          // sw
-                default : misaligned_write           <= '1;                // unsupported size, nop
-            endcase
+        if (we_addr_vld == 1) begin                  // if write enable && in valid address space
+            memory[word_addr_2] <= format_write(MEM_SIZE, byte_offset, memory[word_addr_2], MEM_DIN2);
         end
 
         // read all data synchronously required for BRAM
-        if (MEM_RDEN1) begin                      // need EN for extra load cycle to not change instruction
+        // need EN for extra load cycle to not change instruction
+        if (MEM_RDEN1) begin                      
             MEM_DOUT1 <= memory[MEM_ADDR1];
         end
 
-        if (MEM_RDEN2) begin                      // Read word from memory
-            mem_read_word <= memory[word_addr_2];
+        if (MEM_RDEN2) begin                      
+            case (MEM_ADDR2 >= ADDR_SPACE) 
+                MEM_VIEW : MEM_DOUT2 <= format_read(MEM_SIGN, MEM_SIZE, byte_offset, memory[word_addr_2]);  // output sized and sign extended data
+                IO_VIEW  : MEM_DOUT2 <= IO_IN;                                                              // IO read from buffer
+            endcase
         end
     end
        
-    // Change the data word into sized bytes and sign extend
-    always @(*) begin
-        misaligned_read = '0;
-        case({MEM_SIGN,MEM_SIZE,byte_offset})
-            5'b00011 : mem_read_sized = {{24{mem_read_word[31]}},mem_read_word[31:24]};  // signed byte
-            5'b00010 : mem_read_sized = {{24{mem_read_word[23]}},mem_read_word[23:16]};
-            5'b00001 : mem_read_sized = {{24{mem_read_word[15]}},mem_read_word[15:8]};
-            5'b00000 : mem_read_sized = {{24{mem_read_word[7]}},mem_read_word[7:0]};
-                                        
-            5'b00110 : mem_read_sized = {{16{mem_read_word[31]}},mem_read_word[31:16]};  // signed half
-            5'b00101 : mem_read_sized = {{16{mem_read_word[23]}},mem_read_word[23:8]};
-            5'b00100 : mem_read_sized = {{16{mem_read_word[15]}},mem_read_word[15:0]};
-                
-            5'b01000 : mem_read_sized = mem_read_word;                   // word
-                  
-            5'b10011 : mem_read_sized = {24'd0,mem_read_word[31:24]};    // unsigned byte
-            5'b10010 : mem_read_sized = {24'd0,mem_read_word[23:16]};
-            5'b10001 : mem_read_sized = {24'd0,mem_read_word[15:8]};
-            5'b10000 : mem_read_sized = {24'd0,mem_read_word[7:0]};
-                  
-            5'b10110 : mem_read_sized = {16'd0,mem_read_word[31:16]};    // unsigned half
-            5'b10101 : mem_read_sized = {16'd0,mem_read_word[23:8]};
-            5'b10100 : mem_read_sized = {16'd0,mem_read_word[15:0]};
-                
-            default  : begin // unsupported size, byte offset combination, assert misalignment
-                mem_read_sized  = 32'b0;    
-                misaligned_read = '1;
-            end
-        endcase
-    end
- 
+    //------------------//
     // Memory Mapped IO
+    //------------------//
+
     always @(*) begin
-        if(MEM_ADDR2 >= 32'h00010000) begin  // external address range
-            IO_WR = MEM_WE2;                 // IO Write
-            MEM_DOUT2 = io_buffer;            // IO read from buffer
-            we_addr_vld = 0;                 // address beyond memory range
+        if(MEM_ADDR2 >= ADDR_SPACE) begin  // external address range
+            IO_WR       = MEM_WE2;         // IO Write
+            we_addr_vld = '0;              // address beyond memory range
         end else begin
-            IO_WR = 0;                  // not MMIO
-            MEM_DOUT2 = mem_read_sized;   // output sized and sign extended data
-            we_addr_vld = MEM_WE2;      // address in valid memory range
+            IO_WR       = '0;              // not MMIO
+            we_addr_vld = MEM_WE2;         // address in valid memory range
         end
     end
+
+    //---------------------------//
+    // Data Formatting Functions
+    //---------------------------//
+
+    function [31:0] format_write(
+        input [1:0]  size,
+        input [1:0]  offset,
+        input [31:0] starter,
+        input [31:0] updater
+    );
+
+        reg [31:0] temp;
+        temp = starter;
+        case({size, offset})
+            {SIZE_BYTE,   2'd0} : temp[7:0]   = updater[7:0]; 
+            {SIZE_BYTE,   2'd1} : temp[15:8]  = updater[7:0];
+            {SIZE_BYTE,   2'd2} : temp[23:16] = updater[7:0];
+            {SIZE_BYTE,   2'd3} : temp[31:24] = updater[7:0];
+            {SIZE_H_WORD, 2'd0} : temp[15:0]  = updater[15:0]; 
+            {SIZE_H_WORD, 2'd1} : temp[23:8]  = updater[15:0];
+            {SIZE_H_WORD, 2'd2} : temp[31:16] = updater[15:0];
+            {SIZE_WORD,   2'd0} : temp        = updater;          
+            default : begin end                                        
+        endcase
+        format_write = temp;
+
+    endfunction
+
+    function [31:0] format_read(
+        input        sign,
+        input [1:0]  size,
+        input [1:0]  offset,
+        input [31:0] starter,
+    );
+
+        reg [31:0] temp;
+        case({sign, size, offset})
+            {SIGNED,   SIZE_BYTE,   2'd0} : temp = {{24{starter[7]}},starter[7:0]};
+            {SIGNED,   SIZE_BYTE,   2'd1} : temp = {{24{starter[15]}},starter[15:8]}; 
+            {SIGNED,   SIZE_BYTE,   2'd2} : temp = {{24{starter[23]}},starter[23:16]};       
+            {SIGNED,   SIZE_BYTE,   2'd3} : temp = {{24{starter[31]}},starter[31:24]};                             
+            {SIGNED,   SIZE_H_WORD, 2'd0} : temp = {{16{starter[15]}},starter[15:0]};
+            {SIGNED,   SIZE_H_WORD, 2'd1} : temp = {{16{starter[23]}},starter[23:8]};
+            {SIGNED,   SIZE_H_WORD, 2'd2} : temp = {{16{starter[31]}},starter[31:16]};
+            {SIGNED,   SIZE_WORD,   2'd0} : temp = starter;
+
+            {UNSIGNED, SIZE_BYTE,   2'd0} : temp = {24'd0, starter[7:0]};
+            {UNSIGNED, SIZE_BYTE,   2'd1} : temp = {24'd0, starter[15:8]}; 
+            {UNSIGNED, SIZE_BYTE,   2'd2} : temp = {24'd0, starter[23:16]};       
+            {UNSIGNED, SIZE_BYTE,   2'd3} : temp = {24'd0, starter[31:24]};
+            {UNSIGNED, SIZE_H_WORD, 2'd0} : temp = {16'd0, starter[15:0]};
+            {UNSIGNED, SIZE_H_WORD, 2'd1} : temp = {16'd0, starter[23:8]};
+            {UNSIGNED, SIZE_H_WORD, 2'd2} : temp = {16'd0, starter[31:16]};
+                  
+            default  : begin // unsupported size, byte offset combination, assert misalignment
+                temp = 32'b0;    
+            end
+        endcase
+
+        format_read = temp;
+
+    endfunction
+
+    //------------------------------//
+    // Alignment Check (for RVFI)
+    //------------------------------//
+
+    // Check for R/W address alignment, used for control unit trap
+    `define BYTE(mem_size)   (!mem_size[1] && !mem_size[0])
+    `define H_WORD(mem_size) (!mem_size[1] &&  mem_size[0])
+    `define WORD(mem_size)   ( mem_size[1] && !mem_size[0])
+    assign MISALIGN = (MEM_ADDR2 < ADDR_SPACE) && !(`BYTE(MEM_SIZE) || (`H_WORD(MEM_SIZE) && byte_offset != 2'd3) || (`WORD(MEM_SIZE) && byte_offset == '0));
+
+    //-------------------------//
+    // SBY Formal Verification
+    //-------------------------//
+
+    `ifdef FORMAL
+        (* anyconst *)	wire [13:0] w_addr, r_addr_1;
+        (* anyconst *)	wire [31:0] r_addr_2;
+                        reg [31:0]	w_data, r_data_1, r_data_2;
+                        reg        r_valid_1, r_valid_2;
         
+        // Track previous cycle values for read-after-write checks
+        reg [31:0] prev_mem_addr2, prev_r_addr_2;
+        reg [31:0] prev_mem_addr1, prev_r_addr_1;
+        reg        prev_mem_rden1, prev_mem_rden2;
+        
+        always @(posedge MEM_CLK) begin
+            prev_mem_addr2  <= MEM_ADDR2;
+            prev_r_addr_2   <= r_addr_2;
+            prev_mem_addr1  <= MEM_ADDR1;
+            prev_r_addr_1   <= r_addr_1;
+            prev_mem_rden1  <= MEM_RDEN1;
+            prev_mem_rden2  <= MEM_RDEN2;
+        end
+
+        // Verify Writes
+        initial	assume(w_data == memory[w_addr]);
+        always @(posedge MEM_CLK) begin
+            if (MEM_WE2 && (MEM_ADDR2 < ADDR_SPACE) && (w_addr == word_addr_2)) begin
+                w_data <= format_write(MEM_SIZE, byte_offset, w_data, MEM_DIN2);
+            end
+        end
+        always @(*) begin
+            assert(memory[w_addr] == w_data);
+        end
+
+        // Verify Reads
+        initial begin
+            r_valid_1 = '0; r_valid_2 = '0;
+            r_data_1  = '0; r_data_2  = '0;
+        end
+        always @(posedge MEM_CLK) begin
+            if (MEM_RDEN1 && (r_addr_1 == MEM_ADDR1)) begin
+                r_valid_1 <= '1;
+                r_data_1  <= memory[r_addr_1];
+            end
+            if (MEM_RDEN2 && (r_addr_2 == MEM_ADDR2)) begin
+                r_valid_2 <= '1;
+                if (MEM_ADDR2 >= ADDR_SPACE) begin
+                    r_data_2 <= IO_IN;
+                end else begin
+                    r_data_2 <= format_read(MEM_SIGN, MEM_SIZE, byte_offset, memory[r_addr_2[15:2]]);
+                end
+            end
+        end
+        always @(*) begin
+            if (r_valid_1 && prev_mem_rden1 && (prev_r_addr_1 == prev_mem_addr1)) begin
+                assert(MEM_DOUT1 == r_data_1);
+            end
+            if (r_valid_2 && prev_mem_rden2 && (prev_r_addr_2 == prev_mem_addr2)) begin
+                assert(MEM_DOUT2 == r_data_2);
+            end
+        end
+
+
+        // Read after Write
+        // always @(posedge MEM_CLK) begin
+        //     // if the previous cycle simultaneously reading and writing to mem
+        //     if (prev_we_addr_vld && prev_mem_rden2) begin
+
+
+        //     end
+        // end
+   
+
+        // Check address constraints
+        always @(*) begin
+            assert(MEM_ADDR1 < ADDR_SPACE);
+        end
+
+        // Check MMIO behavior
+        always @(*) begin
+            if (MEM_ADDR2 >= ADDR_SPACE) begin
+                assert(IO_WR == MEM_WE2);
+                assert(we_addr_vld == 1'b0);
+            end else begin
+                assert(IO_WR == 1'b0);
+                assert(we_addr_vld == MEM_WE2);
+            end
+        end
+        
+        // Check misalignment detection
+        always @(*) begin
+            if (MEM_ADDR2 < ADDR_SPACE) begin
+                case(MEM_SIZE)
+                    SIZE_BYTE   : assert(MISALIGN == 1'b0);                     // Bytes are always aligned
+                    SIZE_H_WORD : assert(MISALIGN == (MEM_ADDR2[1:0] == 2'd3)); // Half-word misaligned on byte 3
+                    SIZE_WORD   : assert(MISALIGN == (MEM_ADDR2[1:0] != 2'd0)); // Word misaligned if not on word boundary
+                    default     : assert(MISALIGN == 1'b1);                     // Invalid size
+                endcase
+            end
+        end
+        
+        // Cover Properties
+        always @(posedge MEM_CLK) begin
+            cover(MEM_WE2 && MEM_ADDR2 < ADDR_SPACE);   // Cover memory writes
+            cover(MEM_RDEN2 && MEM_ADDR2 < ADDR_SPACE); // Cover memory reads
+            cover(MEM_ADDR2 >= ADDR_SPACE);             // Cover MMIO access
+            cover(MISALIGN);                            // Cover misaligned access
+        end
+        
+    `endif
+
  endmodule

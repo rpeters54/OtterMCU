@@ -35,7 +35,7 @@ module CSR (
     output reg [31:0] r_data
 );
 
-    always @ (posedge clk) begin
+    always @(posedge clk) begin
 	    //reset all registers to zero
         if (rst == '1) begin
             csr_mepc  <= '0; 
