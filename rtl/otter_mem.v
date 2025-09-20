@@ -49,8 +49,8 @@
 //
 //////////////////////////////////////////////////////////////////////////////////
 
-                                                                                                                             
-module Memory #(
+
+module otter_mem #(
     parameter ROM_FILE = "../mem/memory.mem"
 ) (
     input             MEM_CLK,
@@ -64,7 +64,9 @@ module Memory #(
     input             MEM_SIGN,  // 1-unsigned 0-signed
     input      [31:0] IO_IN,     // Data from IO
 
+`ifdef RISCV_FORMAL
     output            MISALIGN,  // asserted on misaligned read/write
+`endif
     output reg        IO_WR,     // IO 1-write 0-read
     output reg [31:0] MEM_DOUT1, // Instruction
     output reg [31:0] MEM_DOUT2  // Data
@@ -96,19 +98,16 @@ module Memory #(
     // Local Variables
     //-----------------//  
 
-    reg [31:0] mem_read_word, io_buffer, mem_read_sized;
     reg we_addr_vld;    // active when saving (WE) to valid memory address
-    reg io_sel;         // mux select determining whether to look at MEM (0) or IO (1)
-
     wire [13:0] word_addr_2;
     wire [1:0] byte_offset;
     assign word_addr_2 = MEM_ADDR2[15:2];
     assign byte_offset = MEM_ADDR2[1:0];     // byte offset of memory address
-    
+
     //------------------------------//
     // Synchronous Read/Write Block
     //------------------------------//  
-    
+
     always @(posedge MEM_CLK) begin
         // save data (WD) to memory (ADDR2)
         if (we_addr_vld == 1) begin                  // if write enable && in valid address space
@@ -128,7 +127,7 @@ module Memory #(
             endcase
         end
     end
-       
+
     //------------------//
     // Memory Mapped IO
     //------------------//
@@ -165,7 +164,7 @@ module Memory #(
             {SIZE_H_WORD, 2'd1} : temp[23:8]  = updater[15:0];
             {SIZE_H_WORD, 2'd2} : temp[31:16] = updater[15:0];
             {SIZE_WORD,   2'd0} : temp        = updater;          
-            default : begin end                                        
+            default begin end
         endcase
         format_write = temp;
 
@@ -179,29 +178,26 @@ module Memory #(
     );
 
         reg [31:0] temp;
+        temp = 32'd0;
         case({sign, size, offset})
             {SIGNED,   SIZE_BYTE,   2'd0} : temp = {{24{starter[7]}},starter[7:0]};
-            {SIGNED,   SIZE_BYTE,   2'd1} : temp = {{24{starter[15]}},starter[15:8]}; 
-            {SIGNED,   SIZE_BYTE,   2'd2} : temp = {{24{starter[23]}},starter[23:16]};       
-            {SIGNED,   SIZE_BYTE,   2'd3} : temp = {{24{starter[31]}},starter[31:24]};                             
+            {SIGNED,   SIZE_BYTE,   2'd1} : temp = {{24{starter[15]}},starter[15:8]};
+            {SIGNED,   SIZE_BYTE,   2'd2} : temp = {{24{starter[23]}},starter[23:16]};
+            {SIGNED,   SIZE_BYTE,   2'd3} : temp = {{24{starter[31]}},starter[31:24]};
             {SIGNED,   SIZE_H_WORD, 2'd0} : temp = {{16{starter[15]}},starter[15:0]};
             {SIGNED,   SIZE_H_WORD, 2'd1} : temp = {{16{starter[23]}},starter[23:8]};
             {SIGNED,   SIZE_H_WORD, 2'd2} : temp = {{16{starter[31]}},starter[31:16]};
             {SIGNED,   SIZE_WORD,   2'd0} : temp = starter;
 
             {UNSIGNED, SIZE_BYTE,   2'd0} : temp = {24'd0, starter[7:0]};
-            {UNSIGNED, SIZE_BYTE,   2'd1} : temp = {24'd0, starter[15:8]}; 
-            {UNSIGNED, SIZE_BYTE,   2'd2} : temp = {24'd0, starter[23:16]};       
+            {UNSIGNED, SIZE_BYTE,   2'd1} : temp = {24'd0, starter[15:8]};
+            {UNSIGNED, SIZE_BYTE,   2'd2} : temp = {24'd0, starter[23:16]};
             {UNSIGNED, SIZE_BYTE,   2'd3} : temp = {24'd0, starter[31:24]};
             {UNSIGNED, SIZE_H_WORD, 2'd0} : temp = {16'd0, starter[15:0]};
             {UNSIGNED, SIZE_H_WORD, 2'd1} : temp = {16'd0, starter[23:8]};
             {UNSIGNED, SIZE_H_WORD, 2'd2} : temp = {16'd0, starter[31:16]};
-                  
-            default  : begin // unsupported size, byte offset combination, assert misalignment
-                temp = 32'b0;    
-            end
+            default begin end
         endcase
-
         format_read = temp;
 
     endfunction
@@ -214,7 +210,8 @@ module Memory #(
     `define BYTE(mem_size)   (!mem_size[1] && !mem_size[0])
     `define H_WORD(mem_size) (!mem_size[1] &&  mem_size[0])
     `define WORD(mem_size)   ( mem_size[1] && !mem_size[0])
-    assign MISALIGN = (MEM_ADDR2 < ADDR_SPACE) && !(`BYTE(MEM_SIZE) || (`H_WORD(MEM_SIZE) && byte_offset != 2'd3) || (`WORD(MEM_SIZE) && byte_offset == '0));
+
+    assign MISALIGN = !(`BYTE(MEM_SIZE) || (`H_WORD(MEM_SIZE) && byte_offset != 2'd3) || (`WORD(MEM_SIZE) && byte_offset == '0));
 
     //-------------------------//
     // SBY Formal Verification
@@ -225,12 +222,12 @@ module Memory #(
         (* anyconst *)	wire [31:0] r_addr_2;
                         reg [31:0]	w_data, r_data_1, r_data_2;
                         reg        r_valid_1, r_valid_2;
-        
+
         // Track previous cycle values for read-after-write checks
         reg [31:0] prev_mem_addr2, prev_r_addr_2;
         reg [31:0] prev_mem_addr1, prev_r_addr_1;
         reg        prev_mem_rden1, prev_mem_rden2;
-        
+
         always @(posedge MEM_CLK) begin
             prev_mem_addr2  <= MEM_ADDR2;
             prev_r_addr_2   <= r_addr_2;
@@ -280,16 +277,6 @@ module Memory #(
         end
 
 
-        // Read after Write
-        // always @(posedge MEM_CLK) begin
-        //     // if the previous cycle simultaneously reading and writing to mem
-        //     if (prev_we_addr_vld && prev_mem_rden2) begin
-
-
-        //     end
-        // end
-   
-
         // Check address constraints
         always @(*) begin
             assert(MEM_ADDR1 < ADDR_SPACE);
@@ -305,19 +292,17 @@ module Memory #(
                 assert(we_addr_vld == MEM_WE2);
             end
         end
-        
+
         // Check misalignment detection
         always @(*) begin
-            if (MEM_ADDR2 < ADDR_SPACE) begin
-                case(MEM_SIZE)
-                    SIZE_BYTE   : assert(MISALIGN == 1'b0);                     // Bytes are always aligned
-                    SIZE_H_WORD : assert(MISALIGN == (MEM_ADDR2[1:0] == 2'd3)); // Half-word misaligned on byte 3
-                    SIZE_WORD   : assert(MISALIGN == (MEM_ADDR2[1:0] != 2'd0)); // Word misaligned if not on word boundary
-                    default     : assert(MISALIGN == 1'b1);                     // Invalid size
-                endcase
-            end
+            case(MEM_SIZE)
+                SIZE_BYTE   : assert(MISALIGN == 1'b0);                     // Bytes are always aligned
+                SIZE_H_WORD : assert(MISALIGN == (MEM_ADDR2[1:0] == 2'd3)); // Half-word misaligned on byte 3
+                SIZE_WORD   : assert(MISALIGN == (MEM_ADDR2[1:0] != 2'd0)); // Word misaligned if not on word boundary
+                default     : assert(MISALIGN == 1'b1);                     // Invalid size
+            endcase
         end
-        
+
         // Cover Properties
         always @(posedge MEM_CLK) begin
             cover(MEM_WE2 && MEM_ADDR2 < ADDR_SPACE);   // Cover memory writes
@@ -325,7 +310,7 @@ module Memory #(
             cover(MEM_ADDR2 >= ADDR_SPACE);             // Cover MMIO access
             cover(MISALIGN);                            // Cover misaligned access
         end
-        
+
     `endif
 
  endmodule

@@ -21,10 +21,10 @@ cover: expect pass
 smtbmc boolector
 
 [script]
-read -formal Memory.v
-chparam -set ROM_FILE "memory.mem" Memory
-prep -top Memory
+read -formal otter_mem.v
+chparam -set ROM_FILE "memory.mem" otter_mem
+prep -top otter_mem
 
 [files]
-../../rtl/Memory.v
+../../rtl/otter_mem.v
 ../../mem/memory.mem

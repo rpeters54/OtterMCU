@@ -20,7 +20,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module Reg_File (
+module otter_rfile (
     input         clk,
     input  [4:0]  r_addr1, 
     input  [4:0]  r_addr2, 
@@ -30,10 +30,10 @@ module Reg_File (
     output [31:0] r_rs1, 
     output [31:0] r_rs2
 );
-    
+
     // 32, 32-bit registers
     reg [31:0] rfile [0:31]; 
-    
+
     // registers are intially zeroed for testing
     // r0 is zero forever
     initial begin
@@ -41,18 +41,18 @@ module Reg_File (
             rfile[i] = 32'd0;
         end
     end
-    
+
     // dual read functionality
-	// select output register value by address
+    // select output register value by address
     assign r_rs1 = rfile[r_addr1];
     assign r_rs2 = rfile[r_addr2]; 
-    
+
     // single write functionality
     always @(posedge clk) begin
-	    // can not write to register 0
+        // can not write to register 0
         if (w_en && w_addr != 0) begin
             rfile[w_addr] <= w_data;
         end
     end
-    
+
 endmodule

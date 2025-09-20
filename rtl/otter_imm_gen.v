@@ -23,16 +23,16 @@
 Uses concatenation to generate immediates
 {#{value}} means that value is duplicated # times in the output 
 */
-module Immed_Gen (
-    input      [31:7] instrn,
+module otter_imm_gen (
+    input      [31:0] instrn,
     output reg [31:0] upper_immed, 
     output reg [31:0] i_type_immed, 
     output reg [31:0] s_type_immed, 
     output reg [31:0] branch_immed, 
     output reg [31:0] jump_immed
 );
-    
-    always @(*) begin               
+
+    always @(*) begin
         upper_immed  = {instrn[31:12], 12'd0};
         i_type_immed = {{21{instrn[31]}}, instrn[30:20]};
         s_type_immed = {{21{instrn[31]}}, instrn[30:25], instrn[11:7]};

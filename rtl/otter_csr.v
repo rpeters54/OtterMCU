@@ -19,9 +19,9 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
-`include "Defines.svh"
+`include "otter_defines.vh"
 
-module CSR (
+module otter_csr (
     input             clk,
     input             rst, 
     input             intrpt_taken, 
@@ -36,16 +36,16 @@ module CSR (
 );
 
     always @(posedge clk) begin
-	    //reset all registers to zero
+        //reset all registers to zero
         if (rst == '1) begin
             csr_mepc  <= '0; 
             csr_mtvec <= '0; 
             csr_mie   <= '0;
-	    //interrupt state
+        //interrupt state
         end else if (intrpt_taken == '1) begin
             csr_mie  <= '0; 
             csr_mepc <= prog_count;
-	    //synchronous write (used by csrrw)
+        //synchronous write (used by csrrw)
         end else if (w_en == '1) begin
             case (addr) 
                 CSR_MIE_ADDR   : csr_mie   <= w_data[0];
@@ -55,15 +55,15 @@ module CSR (
             endcase
         end
     end
-    
+
     //asynchronous read
     always @(*) begin
-	    //r_data value is based on the addr input
+        //r_data value is based on the addr input
         case (addr)
             CSR_MIE_ADDR   : r_data = {31'd0, csr_mie};
             CSR_MTVEC_ADDR : r_data = csr_mtvec;
             CSR_MEPC_ADDR  : r_data = csr_mepc;
-	        default        : r_data = '0;
+            default        : r_data = '0;
         endcase
     end
 

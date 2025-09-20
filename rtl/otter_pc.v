@@ -20,7 +20,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module PC (
+module otter_pc (
     input              clk,
     input              rst,
     input              w_en,
@@ -31,36 +31,36 @@ module PC (
     input       [31:0] mtvec, 
     input       [31:0] mepc,
 
-    output             pc_misalign,
-    output reg  [31:0] addr,
-    output      [31:0] next_addr
-);
-    
-    localparam PC_MASK  = 32'hFFFF_FFFC;
-    localparam LSB_MASK = 32'h0000_0003;
+`ifdef RISCV_FORMAL
+    output      [31:0] next_addr,
+`endif
 
-    reg [31:0] data_in;
-    
-    assign next_addr   = addr + 'd4;
-    assign pc_misalign = |(data_in & LSB_MASK);
-    
+    output reg  [31:0] addr,
+    output      [31:0] addr_inc
+);
+
+    localparam PC_MASK  = 32'hFFFF_FFFC;
+
+    reg [31:0] next_addr;
+
+    assign addr_inc = addr + 'd4;
     always @(posedge clk) begin
         if (rst) begin
             addr <= 0;
         end else if (w_en) begin
-            addr <= data_in & PC_MASK;
+            addr <= next_addr & PC_MASK;
         end
     end
 
     always @(*) begin
         case(src_sel)
-            3'd0    : data_in = next_addr;
-            3'd1    : data_in = jalr;
-            3'd2    : data_in = branch;
-            3'd3    : data_in = jal;
-            3'd4    : data_in = mtvec;
-            3'd5    : data_in = mepc;
-            default : data_in = 32'hDEADDEAD;
+            3'd0    : next_addr = addr_inc;
+            3'd1    : next_addr = jalr;
+            3'd2    : next_addr = branch;
+            3'd3    : next_addr = jal;
+            3'd4    : next_addr = mtvec;
+            3'd5    : next_addr = mepc;
+            default : next_addr = 32'hDEADDEAD;
         endcase
     end
 

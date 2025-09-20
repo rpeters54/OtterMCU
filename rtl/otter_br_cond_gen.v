@@ -20,7 +20,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module Branch_Cond_Gen (
+module otter_br_cond_gen (
     input  [31:0] rs1, 
     input  [31:0] rs2,
     output        br_eq,

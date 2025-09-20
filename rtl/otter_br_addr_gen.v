@@ -20,7 +20,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module Branch_Addr_Gen (
+module otter_br_addr_gen (
     input  [31:0] rs1, 
     input  [31:0] i_type_immed, 
     input  [31:0] branch_immed, 

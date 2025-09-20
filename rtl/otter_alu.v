@@ -19,9 +19,9 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
-`include "Defines.svh"
+`include "otter_defines.vh"
 
-module ALU (
+module otter_alu (
     input      [31:0] src_a, 
     input      [31:0] src_b,
     input      [3:0]  func,

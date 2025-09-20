@@ -1,6 +1,6 @@
 
 `timescale 1ns / 1ps
-`include "../../rtl/Defines.svh"
+`include "../../rtl/otter_defines.vh"
 
 module tb_alu;
 
@@ -19,7 +19,7 @@ module tb_alu;
     integer fail_count = 0;
 
     // Instantiate the ALU
-    ALU dut (
+    otter_alu dut (
         .src_a(src_a),
         .src_b(src_b),
         .func(func),
