@@ -81,22 +81,22 @@ module otter_mcu #(
     assign mem_sign = mem_inst_out[14];
 
     otter_mem #(ROM_FILE) mem (
-        .MEM_CLK(clk), 
-        .MEM_RDEN1(mem_rden1), 
-        .MEM_RDEN2(mem_rden2),
-        .MEM_WE2(mem_we2), 
-        .MEM_ADDR1(mem_addr_1), 
-        .MEM_ADDR2(mem_addr_2),
-        .MEM_DIN2(mem_din_2), 
-        .MEM_SIZE(mem_size), 
-        .MEM_SIGN(mem_sign), 
+        .clk(clk), 
+        .rden1(mem_rden1), 
+        .rden2(mem_rden2),
+        .we2(mem_we2), 
+        .addr1(mem_addr_1), 
+        .addr2(mem_addr_2),
+        .din2(mem_din_2), 
+        .size(mem_size), 
+        .sign(mem_sign), 
 `ifdef RISCV_FORMAL
-        .MISALIGN(mem_misalign),
+        .misalign(mem_misalign),
 `endif
-        .IO_IN(iobus_in), 
-        .IO_WR(iobus_wr),
-        .MEM_DOUT1(mem_inst_out), 
-        .MEM_DOUT2(mem_data_out)
+        .io_in(iobus_in), 
+        .io_wr(iobus_wr),
+        .dout1(mem_inst_out), 
+        .dout2(mem_data_out)
     );
 
     //----------------------------------------------------------------------//
@@ -297,14 +297,14 @@ module otter_mcu #(
             rvfi_order <= rst ? 0 : rvfi_order + rvfi_valid;
             // current instruction fetched from memory
             rvfi_insn <= mem_inst_out;
-
-            rvfi_trap <= mem_misalign || (pc_next_addr & '3 > 0) || invld_opcode;
+            // flag if next instruction is illegal
+            rvfi_trap <= /* TBD */;
             rvfi_intr <= /* TBD */;
 
             // Fixed values
-            rvfi_halt <= 0;
-            rvfi_mode <= 3;
-            rvfi_ixl <= 1;
+            rvfi_halt <= 0; // Never Halts
+            rvfi_mode <= 3; // Machine Mode
+            rvfi_ixl <= 1;  // Always 32-bit
 
             // rfile sources and corresponding data
             rvfi_rs1_addr  <= rfile_r_addr1;
@@ -321,6 +321,7 @@ module otter_mcu #(
             rvfi_pc_wdata <= pc_next_addr;
 
             // memory bindings
+            `define RISCV_FORMAL_ALIGNED_MEM
             rvfi_mem_addr  <= mem_addr_2;
             case ({mem_rden2, mem_size})
                 {1'b1, MEM_SIZE_BYTE}   : rvfi_mem_rmask <= 32'h0000_00FF;
@@ -370,7 +371,7 @@ module otter_mcu #(
                     end
                     CSR_MEPC_ADDR : begin
                         rvfi_csr_mepc_rmask = 32'hFFFF_FFFF;
-                        rvfi_csr_mepc_wmask = 32'hFFFF_FFFF;
+                        rvfi_csr_mepc_wmask = 32'hFFFF_FFFC;
                         rvfi_csr_mepc_rdata = csr_r_data;
                         rvfi_csr_mepc_wdata = csr_w_data;   
                     end

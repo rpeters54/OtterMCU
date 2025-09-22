@@ -136,7 +136,8 @@ module otter_cu_dcdr (
                         default : begin end // invalid opcode, nop
                     endcase
                     case(`FUNC_BRANCH_BASE(func)) // check result based on selector
-                        `FUNC_BRANCH_BASE(FUNC_B_BEQ), `FUNC_BRANCH_BASE(FUNC_B_BLT),
+                        `FUNC_BRANCH_BASE(FUNC_B_BEQ), 
+                        `FUNC_BRANCH_BASE(FUNC_B_BLT),
                         `FUNC_BRANCH_BASE(FUNC_B_BLTU) : begin
                             if (branch_base != `FUNC_BRANCH_SEL(func)) begin
                                 pc_src_sel = DCDR_PC_SRC_SEL_BRANCH;
@@ -167,7 +168,7 @@ module otter_cu_dcdr (
                 OPCODE_SYS : begin         // SYS opcode
                     case (func)
                         FUNC_SYS_CSRRW : begin
-                            rfile_w_sel = DCDR_RFILE_W_SEL_CSR_R_DATA;           
+                            rfile_w_sel = DCDR_RFILE_W_SEL_CSR_R_DATA;
                             pc_src_sel  = DCDR_PC_SRC_SEL_ADDR_INC;
                         end
                         FUNC_SYS_MRET : begin
@@ -175,7 +176,7 @@ module otter_cu_dcdr (
                                 pc_src_sel = DCDR_PC_SRC_SEL_MEPC;
                             end
                         end
-                        default begin end // invalid opcode, nop
+                        default : begin end // invalid opcode, nop
                     endcase
                 end
                 default : begin end

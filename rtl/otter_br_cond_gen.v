@@ -28,7 +28,6 @@ module otter_br_cond_gen (
     output        br_ltu
 );
 
-    //checks is rs1 is equal to or less than rs2 (signed and unsigned) 
     assign br_eq  = rs1 == rs2;
     assign br_lt  = $signed(rs1) < $signed(rs2);
     assign br_ltu = rs1 < rs2;

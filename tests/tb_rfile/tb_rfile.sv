@@ -52,7 +52,7 @@ module tb_rfile;
         w_data = 0;
         
         // Wait for initial block to complete
-        @(posedge clk);
+        @(negedge clk);
         
         // TEST 1: Initial state verification
         $display("\n--- TEST 1: Initial State Verification ---");
@@ -99,7 +99,7 @@ module tb_rfile;
         end
         $display("Simulation completed at time: %0t", $time);
         
-        @(posedge clk)
+        @(negedge clk)
         $finish;
     end
     
@@ -107,18 +107,17 @@ module tb_rfile;
     task test_initial_state();
         begin
             $display("Testing initial register values...");
-            
+            //
             // Check all registers are initially zero
             for (i = 0; i < 32; i++) begin
                 r_addr1 = i[4:0];
-                #1; // Allow combinational logic to settle
                 if (r_rs1 !== 32'h0) begin
                     $display("ERROR: Register %0d not initialized to 0. Got: 0x%h", i, r_rs1);
                     error_count = error_count + 1;
                 end
             end
-            
-            $display("✓ All registers properly initialized to 0");
+
+            $display("Done");
         end
     endtask
     
@@ -128,23 +127,22 @@ module tb_rfile;
             $display("Testing basic write and read operations...");
             
             // Write to register 1
-            @(posedge clk);
+            @(negedge clk);
             w_addr = 5'd1;
             w_data = 32'hDEADBEEF;
             w_en = 1;
-            @(posedge clk);
+            @(negedge clk);
             w_en = 0;
-            @(posedge clk);
+            @(negedge clk);
             
             // Read from register 1
             r_addr1 = 5'd1;
-            #1; // Allow combinational settling
             if (r_rs1 !== 32'hDEADBEEF) begin
                 $display("ERROR: Write/Read failed. Expected: 0xDEADBEEF, Got: 0x%h", r_rs1);
                 error_count = error_count + 1;
-            end else begin
-                $display("✓ Basic write/read successful");
             end
+
+            $display("Done");
         end
     endtask
     
@@ -154,23 +152,22 @@ module tb_rfile;
             $display("Testing register 0 write protection...");
             
             // Attempt to write to register 0
-            @(posedge clk);
+            @(negedge clk);
             w_addr = 5'd0;
             w_data = 32'hDEADBEEF;
             w_en = 1;
-            @(posedge clk);
+            @(negedge clk);
             w_en = 0;
-            @(posedge clk);
+            @(negedge clk);
 
             // Read register 0
             r_addr1 = 5'd0;
-            #1; // Allow combinational settling
             if (r_rs1 !== 32'h0) begin
                 $display("ERROR: Register 0 not protected! Got: 0x%h", r_rs1);
                 error_count = error_count + 1;
-            end else begin
-                $display("✓ Register 0 properly protected");
             end
+
+            $display("Done");
         end
     endtask
 
@@ -180,28 +177,27 @@ module tb_rfile;
             $display("Testing dual read functionality...");
 
             // Write different values to two registers
-            @(posedge clk);
+            @(negedge clk);
             w_addr = 5'd5;
             w_data = 32'h12345678;
             w_en = 1;
-            @(posedge clk);
+            @(negedge clk);
             w_addr = 5'd10;
             w_data = 32'h87654321;
-            @(posedge clk);
+            @(negedge clk);
             w_en = 0;
-            @(posedge clk);
+            @(negedge clk);
 
             // Read both simultaneously
             r_addr1 = 5'd5;
             r_addr2 = 5'd10;
-            #1; // Allow combinational settling
 
             if (r_rs1 !== 32'h12345678 || r_rs2 !== 32'h87654321) begin
                 $display("ERROR: Dual read failed. r_rs1: 0x%h, r_rs2: 0x%h", r_rs1, r_rs2);
                 error_count = error_count + 1;
-            end else begin
-                $display("✓ Dual read functionality working correctly");
             end
+
+            $display("Done");
         end
     endtask
     
@@ -211,27 +207,26 @@ module tb_rfile;
             $display("Testing write enable control...");
 
             // Write a value to register 3
-            @(posedge clk);
+            @(negedge clk);
             w_addr = 5'd3;
             w_data = 32'hABCDEF00;
             w_en = 1;
-            @(posedge clk);
+            @(negedge clk);
 
             // Attempt to write with w_en = 0
             w_data = 32'h11111111;
             w_en = 0;
-            @(posedge clk);
+            @(negedge clk);
 
             // Check that register wasn't changed
             r_addr1 = 5'd3;
-            #1; // Allow combinational settling
 
             if (r_rs1 !== 32'hABCDEF00) begin
                 $display("ERROR: Write enable not working. Expected: 0xABCDEF00, Got: 0x%h", r_rs1);
                 error_count = error_count + 1;
-            end else begin
-                $display("✓ Write enable control working correctly");
             end
+            
+            $display("Done");
         end
     endtask
 
@@ -241,23 +236,21 @@ module tb_rfile;
             $display("Testing address boundary conditions...");
 
             // Test register 31 (highest address)
-            @(posedge clk);
+            @(negedge clk);
             w_addr = 5'd31;
             w_data = 32'hFFFFFFFF;
             w_en = 1;
-            @(posedge clk);
+            @(negedge clk);
             w_en = 0;
-            @(posedge clk);
+            @(negedge clk);
 
             r_addr1 = 5'd31;
-            #1; // Allow combinational settling
-
             if (r_rs1 !== 32'hFFFFFFFF) begin
                 $display("ERROR: Register 31 access failed. Got: 0x%h", r_rs1);
                 error_count = error_count + 1;
-            end else begin
-                $display("✓ Address boundary testing passed");
             end
+
+             $display("Done");
         end
     endtask
     
@@ -276,21 +269,19 @@ module tb_rfile;
             test_patterns[6] = 32'hF0F0F0F0;
             test_patterns[7] = 32'h0F0F0F0F;
 
-            @(posedge clk);
+            @(negedge clk);
             w_en = 1;
             for (i = 0; i < 8; i = i + 1) begin
                 w_addr = i[4:0] + 5'd20; // Use registers 20-27
                 w_data = test_patterns[i];
-                @(posedge clk);
+                @(negedge clk);
             end
             w_en = 0;
-            @(posedge clk);
+            @(negedge clk);
             
             // Verify all patterns
             for (i = 0; i < 8; i = i + 1) begin
                 r_addr1 = i[4:0] + 5'd20;
-                #1; // Allow combinational settling
-
                 if (r_rs1 !== test_patterns[i]) begin
                     $display("ERROR: Pattern test failed for register %0d. Expected: 0x%h, Got: 0x%h", 
                             i+20, test_patterns[i], r_rs1);
@@ -298,7 +289,7 @@ module tb_rfile;
                 end
             end
             
-            $display("✓ Data pattern testing passed");
+            $display("Done");
         end
     endtask
     
@@ -308,39 +299,36 @@ module tb_rfile;
             $display("Testing simultaneous read/write operations...");
 
             // Write to register 15
-            @(posedge clk);
+            @(negedge clk);
             w_addr = 5'd15;
             w_data = 32'hCAFEBABE;
             w_en = 1;
-            @(posedge clk);
+            @(negedge clk);
             w_en = 0;
-            @(posedge clk);
+            @(negedge clk);
 
             // Simultaneously read from register 15 while writing to register 16
             r_addr1 = 5'd15;
             w_addr = 5'd16;
             w_data = 32'hDEADC0DE;
             w_en = 1;
-            @(posedge clk);
+            @(negedge clk);
             w_en = 0;
-            @(posedge clk);
+            @(negedge clk);
             
             // Check read operation worked
-            #1; // Allow combinational settling
             if (r_rs1 !== 32'hCAFEBABE) begin
                 $display("ERROR: Simultaneous read failed. Got: 0x%h", r_rs1);
                 error_count = error_count + 1;
             end
             
             r_addr1 = 5'd16;
-            #1; // Allow combinational settling
-
             if (r_rs1 !== 32'hDEADC0DE) begin
                 $display("ERROR: Simultaneous write failed. Got: 0x%h", r_rs1);
                 error_count = error_count + 1;
             end
             
-            $display("✓ Simultaneous read/write operations passed");
+            $display("Done");
         end
     endtask
     
@@ -349,21 +337,20 @@ module tb_rfile;
         begin
             $display("Testing all 32 registers comprehensively...");
             
-            @(posedge clk);
+            @(negedge clk);
             w_en = 1;
             // Write unique values to all registers (except 0)
             for (i = 1; i < 32; i = i + 1) begin
                 w_addr = i[4:0];
                 w_data = 32'h1000_0000 + i; // Unique pattern for each register
-                @(posedge clk);
+                @(negedge clk);
             end
             w_en = 0;
-            @(posedge clk);
+            @(negedge clk);
             
             // Verify all registers have correct values
             for (i = 0; i < 32; i = i + 1) begin
                 r_addr1 = i[4:0];
-                #1; // Allow combinational settling
 
                 expected_data = (i == 0) ? 32'h0 : (32'h1000_0000 + i);
                 if (r_rs1 !== expected_data) begin
@@ -373,7 +360,7 @@ module tb_rfile;
                 end
             end
             
-            $display("✓ All registers comprehensive test passed");
+            $display("Done");
         end
     endtask
     

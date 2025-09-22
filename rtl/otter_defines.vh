@@ -3,7 +3,6 @@
 `ifndef DEFINES
 `define DEFINES
 
-
     `define INSTRN_OPCODE(instrn)     (instrn[6:0])
     `define INSTRN_I_R_PREFIX(instrn) (instrn[31:25])
     `define INSTRN_FUNC(instrn)       (instrn[14:12])
@@ -94,8 +93,6 @@
     localparam PRE_FUNC_R_OR      = { PREFIX_I_R_0, FUNC_R_OR  };
     localparam PRE_FUNC_R_AND     = { PREFIX_I_R_0, FUNC_R_AND };
 
-    
-
     // ALU Functions
     localparam ALU_ADD  = 4'b0000;
     localparam ALU_SUB  = 4'b1000;
@@ -140,8 +137,6 @@
     localparam DCDR_PC_SRC_SEL_MTVEC    = 3'd4;
     localparam DCDR_PC_SRC_SEL_MEPC     = 3'd5;
 
-
-
     //--------------//
     // RVFI Defines
     //--------------//
@@ -156,7 +151,6 @@
     	`RFVI_CSR_TRACE(mie)  \
     	`RFVI_CSR_TRACE(mepc) \
 	    `RFVI_CSR_TRACE(mtvec)
-
 
     `define RVFI_OUTPUTS                  \
     	output reg        rvfi_valid,     \

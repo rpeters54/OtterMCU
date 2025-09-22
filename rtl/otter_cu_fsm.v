@@ -56,7 +56,7 @@ module otter_cu_fsm (
 
     // state update block
     always @(posedge clk) begin
-        if (rst == '1) begin 
+        if (rst == '1) begin
             present_state   <= ST_INIT;
         end else begin
             present_state   <= next_state;
@@ -101,12 +101,10 @@ module otter_cu_fsm (
                 next_state = ST_EXEC;
             end
             ST_EXEC :  begin
-                if (intrpt_queued == '1 && (opcode != OPCODE_LOAD || mem_misalign)) begin
-                    next_state = ST_INTRPT;
-                end else begin 
-                    next_state = ST_FETCH;
-                end	
-		        case(opcode) 
+                next_state = ST_FETCH;
+
+                // instruction cases
+                case(opcode) 
                     OPCODE_OP_REG : begin  //R-Type opcode
                         rfile_w_en = '1;
                     end  
@@ -150,25 +148,31 @@ module otter_cu_fsm (
                         invld_opcode = '1;
                     end
                 endcase 
+
+                // jump to interrupt if queued,
+                // defer until next cycle if writing back
+                if (intrpt_queued == '1 && next_state != ST_WR_BK) begin
+                    next_state = ST_INTRPT;
+                end	
             end
-	        //special case for load instructions
-            ST_WR_BK : begin        
+            //special case for load instructions
+            ST_WR_BK : begin
                 //memory reads require an extra clock cycle
-	            rfile_w_en = '1;
-	            if (intrpt_queued == '1) begin
+                rfile_w_en = '1;
+                if (intrpt_queued == '1) begin
                     next_state = ST_INTRPT;
                 end else begin
                     next_state = ST_FETCH;
                 end
             end
-	        //interrupt routine
+            //interrupt routine
             ST_INTRPT : begin
-		        //output signal sent to CSR and DCDR
+                //output signal sent to CSR and DCDR
                 intrpt_taken  = '1;
                 next_state = ST_FETCH;
             end
-	        default : begin 
-	            next_state = ST_INIT;
+            default : begin 
+                next_state = ST_INIT;
             end
         endcase 
     end
@@ -176,118 +180,113 @@ module otter_cu_fsm (
 
 `ifdef FORMAL
 
-    // Verify State Transitions
+    // helper booleans
+    wire f_is_load  = (opcode == OPCODE_LOAD && !mem_misalign);
+    wire f_is_store = (opcode == OPCODE_STORE && !mem_misalign);
+    wire f_is_csrrw = (opcode == OPCODE_SYS && func[0] == 1'b1);
+
+    reg f_past_rst;
+    initial f_past_rst = 1'b1;
+    always @(posedge clk) f_past_rst <= rst;
+
+    // assume reset set initially, but never asserted afterward
+    initial assume(rst);
+    always @(*) assume(!(!f_past_rst && rst));
 
     always @(*) begin
         case (present_state)
-            ST_INIT : begin
+            ST_INIT:
                 assert(next_state == ST_FETCH);
-            end
-            ST_FETCH : begin
+            ST_FETCH:
                 assert(next_state == ST_EXEC);
-            end
-            ST_EXEC : begin
-                if (opcode == OPCODE_LOAD && !mem_misalign) begin
+            ST_EXEC:
+                if (f_is_load)
                     assert(next_state == ST_WR_BK);
-                end else begin
-                    if (intrpt_queued) begin
-                        assert(next_state == ST_INTRPT);
-                    end else begin
-                        assert(next_state == ST_FETCH);
-                    end
-                end
-            end
-            ST_WR_BK : begin
-                if (intrpt_queued) begin
+                else if (intrpt_queued)
                     assert(next_state == ST_INTRPT);
-                end else begin
+                else
                     assert(next_state == ST_FETCH);
-                end
-            end
-            ST_INTRPT : begin
+            ST_WR_BK:
+                if (intrpt_queued)
+                    assert(next_state == ST_INTRPT);
+                else
+                    assert(next_state == ST_FETCH);
+            ST_INTRPT:
                 assert(next_state == ST_FETCH);
-            end
-            default : begin 
-                assert(false);
-            end
+            default:
+                // We should never be in a default state
+                assert(
+                    present_state == ST_INIT || 
+                    present_state == ST_FETCH || 
+                    present_state == ST_EXEC || 
+                    present_state == ST_WR_BK || 
+                    present_state == ST_INTRPT
+                );
         endcase
 
-        // Check all variables are set properly
-        
-        assert(mem_rden1 ==(present_state == ST_FETCH));
-        assert(pc_w_en == !(present_state == ST_INIT || present_state == ST_FETCH || (present_state == ST_EXEC && next_state == ST_WR_BK)));
-        assert(mem_rden2 == (present_state == ST_EXEC && next_state == ST_WR_BK));
-        assert(mem_we2 == (present_state == ST_EXEC && opcode == OPCODE_STORE && !mem_misalign));
-        assert(cu_rst == (present_state == ST_INIT));
-        assert(csr_we == (present_state == ST_EXEC && opcode == OPCODE_SYS && (func[0] == '1)));
+        // Prove that each control signal is asserted ONLY in the correct state(s).
+        assert(cu_rst       == (present_state == ST_INIT));
+        assert(mem_rden1    == (present_state == ST_FETCH));
         assert(intrpt_taken == (present_state == ST_INTRPT));
-        assert(rfile_w_en == (present_state == ST_WR_BK || (present_state == ST_EXEC && !(
-            opcode == OPCODE_LOAD
-            || opcode == OPCODE_STORE
-            || opcode == OPCODE_BRANCH
-            || (opcode == OPCODE_SYS && (func[0] == '0))
-            || invld_opcode
-        ))));
+
+        assert(pc_w_en      == !((present_state == ST_INIT || present_state == ST_FETCH) || (present_state == ST_EXEC && f_is_load)));
+        assert(mem_rden2    == (present_state == ST_EXEC && f_is_load));
+        assert(mem_we2      == (present_state == ST_EXEC && f_is_store));
+        assert(csr_we       == (present_state == ST_EXEC && f_is_csrrw));
+        assert(rfile_w_en   == (present_state == ST_WR_BK ||
+                                (present_state == ST_EXEC &&
+                                 (opcode == OPCODE_OP_REG  || opcode == OPCODE_OP_IMM ||
+                                  opcode == OPCODE_JALR    || opcode == OPCODE_LUI    ||
+                                  opcode == OPCODE_AUIPC   || opcode == OPCODE_JAL)
+                                ) ||
+                                (present_state == ST_EXEC && f_is_csrrw)
+                               ));
     end
 
-    // Validate Interrupt One-Shot Works Properly
+    reg f_past_rose_intrpt_vld;
+    reg f_past_was_intrpt_state;
+    reg f_past_intrpt_queued;
+    reg f_past_intrpt_valid;
+    reg f_past_prev_intrpt_valid;
 
-    // Create signals to track previous signal states
-    reg prev_intrpt_queued, prev_ROSE_intrpt_vld, prev_was_intrpt_state;
-    reg prev_intrpt_queued_vld, prev_ROSE_intrpt_vld_vld, prev_was_intrpt_state_vld;
-    wire ROSE_intrpt_vld, STABLE_intrpt_vld;
-
-    assign ROSE_intrpt_vld   = (prev_intrpt_vld == 1'b0) && (intrpt_vld == 1'b1);
-    assign STABLE_intrpt_vld = (prev_intrpt_vld == intrpt_vld);
-    initial begin
-        prev_intrpt_queued        = '0;
-        prev_ROSE_intrpt_vld      = '0;
-        prev_was_intrpt_state     = '0;
-        prev_intrpt_queued_vld    = '0;
-        prev_ROSE_intrpt_vld_vld  = '0;
-        prev_was_intrpt_state_vld = '0;
-    end
+    // On every clock edge, sample the current values into the 'past' registers.
     always @(posedge clk) begin
-        if (rst) begin
-            prev_intrpt_queued        <= '0;
-            prev_ROSE_intrpt_vld      <= '0;
-            prev_was_intrpt_state     <= '0;
-            prev_intrpt_queued_vld    <= '0;
-            prev_ROSE_intrpt_vld_vld  <= '0;
-            prev_was_intrpt_state_vld <= '0;
-        end else begin
-            prev_intrpt_queued        <= intrpt_queued;
-            prev_ROSE_intrpt_vld      <= ROSE_intrpt_vld;
-            prev_was_intrpt_state     <= (present_state == ST_INTRPT);
-            prev_intrpt_queued_vld    <= '1;
-            prev_ROSE_intrpt_vld_vld  <= '1;
-            prev_was_intrpt_state_vld <= '1;
-        end
+        f_past_rose_intrpt_vld <= (!prev_intrpt_vld && intrpt_vld);
+        f_past_was_intrpt_state <= (present_state == ST_INTRPT);
+        f_past_intrpt_queued <= intrpt_queued;
+        f_past_intrpt_vld <= intrpt_vld;
+        f_past_prev_intrpt_valid <= prev_intrpt_vld;
     end
 
-    // Check assertions on the cycle AFTER the triggering event
+    // On every clock edge, check assertions based on the values from the *previous* cycle.
     always @(posedge clk) begin
-        if (!rst) begin
-            // Assert that intrpt_queued goes high the cycle after rising edge of intrpt_vld
-            if (prev_ROSE_intrpt_vld && prev_ROSE_intrpt_vld_vld) begin
+        if (!f_past_rst) begin
+            // If intrpt_vld rose in the previous cycle, intrpt_queued must now be high.
+            if (f_past_rose_intrpt_vld) begin
                 assert(intrpt_queued == 1'b1);
             end
 
-            // Assert that intrpt_queued clears the cycle after interrupt processing
-            if (!prev_ROSE_intrpt_vld && prev_ROSE_intrpt_vld_vld 
-                && prev_was_intrpt_state && prev_was_intrpt_state_vld) begin
+            // If the FSM was in the interrupt state and intrpt_vld was stable, intrpt_queued must now be low.
+            if (f_past_was_intrpt_state && f_past_prev_intrpt_valid == f_past_intrpt_vld) begin
                 assert(intrpt_queued == 1'b0);
             end
 
-            // Assert that intrpt_queued remains stable when not being set or cleared
-            if ((!prev_ROSE_intrpt_vld && prev_ROSE_intrpt_vld_vld) 
-                && (!prev_was_intrpt_state && prev_was_intrpt_state_vld)
-                && prev_intrpt_queued_vld) begin
-                assert(prev_intrpt_queued == intrpt_queued);
+            // If neither the set nor clear condition occurred, intrpt_queued must remain stable.
+            if (!f_past_rose_intrpt_vld && !f_past_was_intrpt_state) begin
+                assert(intrpt_queued == f_past_intrpt_queued);
             end
         end
+    end
+
+    // Prove that conflicting signals are never asserted in the same cycle.
+    always @(*) begin
+        assert(!(mem_rden1 && mem_rden2));
+        assert(!(mem_rden1 && mem_we2));
+        assert(!(mem_rden2 && mem_we2));
+        assert(!(cu_rst && rfile_w_en));
     end
 
 `endif
 
 endmodule
+

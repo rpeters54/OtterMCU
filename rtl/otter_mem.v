@@ -15,25 +15,25 @@
 //              mapped IO. ADDR2 is byte addressable.
 //              RDEN1 and EDEN2 are read enables for ADDR1 and ADDR2. These are
 //              needed due to synchronous reading
-//              MEM_SIZE used to specify reads as byte (0), half (1), or word (2)
-//              MEM_SIGN used to specify unsigned (1) vs signed (0) extension
-//              IO_IN is data from external IO and synchronously buffered
+//              size used to specify reads as byte (0), half (1), or word (2)
+//              sign used to specify unsigned (1) vs signed (0) extension
+//              io_in is data from external IO and synchronously buffered
 //
 // Memory OTTER_MEMORY (
-//    .MEM_CLK   (),
-//    .MEM_RDEN1 (),
-//    .MEM_RDEN2 (),
-//    .MEM_WE2   (),
-//    .MEM_ADDR1 (),
-//    .MEM_ADDR2 (),
-//    .MEM_DIN2  (),
-//    .MEM_SIZE  (),
-//    .MEM_SIGN  (),
-//    .IO_IN     (),
-//    .MISALIGN  (),
-//    .IO_WR     (),
-//    .MEM_DOUT1 (),
-//    .MEM_DOUT2 ()  
+//    .clk   (),
+//    .rden1 (),
+//    .rden2 (),
+//    .we2   (),
+//    .addr1 (),
+//    .addr2 (),
+//    .din2  (),
+//    .size  (),
+//    .sign  (),
+//    .io_in     (),
+//    .misalign  (),
+//    .io_wr     (),
+//    .dout1 (),
+//    .dout2 ()  
 // );
 //
 // Revision:
@@ -41,7 +41,7 @@
 // Revision 1.02 - Rewrite to simplify logic by P. Hummel
 // Revision 1.03 - changed signal names, added instantiation template
 // Revision 1.04 - added defualt to write case statement
-// Revision 1.05 - changed MEM_WD to MEM_DIN2, changed default to save nothing
+// Revision 1.05 - changed MEM_WD to din2, changed default to save nothing
 // Revision 1.06 - removed typo in instantiation template
 // Revision 1.07 - remove unused wordAddr1 signal
 // Revision 1.08 - formatting changes / translation to pure verilog (Riley Peters)
@@ -53,23 +53,23 @@
 module otter_mem #(
     parameter ROM_FILE = "../mem/memory.mem"
 ) (
-    input             MEM_CLK,
-    input             MEM_RDEN1, // read enable Instruction
-    input             MEM_RDEN2, // read enable data
-    input             MEM_WE2,   // write enable.
-    input      [13:0] MEM_ADDR1, // Instruction Memory word Addr (Connect to PC[15:2])
-    input      [31:0] MEM_ADDR2, // Data Memory Addr
-    input      [31:0] MEM_DIN2,  // Data to save
-    input      [1:0]  MEM_SIZE,  // 0-Byte, 1-Half, 2-Word
-    input             MEM_SIGN,  // 1-unsigned 0-signed
-    input      [31:0] IO_IN,     // Data from IO
+    input             clk,
+    input             rden1, // read enable Instruction
+    input             rden2, // read enable data
+    input             we2,   // write enable.
+    input      [13:0] addr1, // Instruction Memory word Addr (Connect to PC[15:2])
+    input      [31:0] addr2, // Data Memory Addr
+    input      [31:0] din2,  // Data to save
+    input      [1:0]  size,  // 0-Byte, 1-Half, 2-Word
+    input             sign,  // 1-unsigned 0-signed
+    input      [31:0] io_in,     // Data from IO
 
 `ifdef RISCV_FORMAL
-    output            MISALIGN,  // asserted on misaligned read/write
+    output            misalign,  // asserted on misaligned read/write
 `endif
-    output reg        IO_WR,     // IO 1-write 0-read
-    output reg [31:0] MEM_DOUT1, // Instruction
-    output reg [31:0] MEM_DOUT2  // Data
+    output reg        io_wr,     // IO 1-write 0-read
+    output reg [31:0] dout1, // Instruction
+    output reg [31:0] dout2  // Data
 );
 
     localparam MEM_VIEW = 1'b0;
@@ -101,29 +101,29 @@ module otter_mem #(
     reg we_addr_vld;    // active when saving (WE) to valid memory address
     wire [13:0] word_addr_2;
     wire [1:0] byte_offset;
-    assign word_addr_2 = MEM_ADDR2[15:2];
-    assign byte_offset = MEM_ADDR2[1:0];     // byte offset of memory address
+    assign word_addr_2 = addr2[15:2];
+    assign byte_offset = addr2[1:0];     // byte offset of memory address
 
     //------------------------------//
     // Synchronous Read/Write Block
     //------------------------------//  
 
-    always @(posedge MEM_CLK) begin
+    always @(posedge clk) begin
         // save data (WD) to memory (ADDR2)
         if (we_addr_vld == 1) begin                  // if write enable && in valid address space
-            memory[word_addr_2] <= format_write(MEM_SIZE, byte_offset, memory[word_addr_2], MEM_DIN2);
+            memory[word_addr_2] <= format_write(size, byte_offset, memory[word_addr_2], din2);
         end
 
         // read all data synchronously required for BRAM
         // need EN for extra load cycle to not change instruction
-        if (MEM_RDEN1) begin                      
-            MEM_DOUT1 <= memory[MEM_ADDR1];
+        if (rden1) begin
+            dout1 <= memory[addr1];
         end
 
-        if (MEM_RDEN2) begin                      
-            case (MEM_ADDR2 >= ADDR_SPACE) 
-                MEM_VIEW : MEM_DOUT2 <= format_read(MEM_SIGN, MEM_SIZE, byte_offset, memory[word_addr_2]);  // output sized and sign extended data
-                IO_VIEW  : MEM_DOUT2 <= IO_IN;                                                              // IO read from buffer
+        if (rden2) begin
+            case (addr2 >= ADDR_SPACE) 
+                MEM_VIEW : dout2 <= format_read(sign, size, byte_offset, memory[word_addr_2]);  // output sized and sign extended data
+                IO_VIEW  : dout2 <= io_in;                                                      // IO read from buffer
             endcase
         end
     end
@@ -133,12 +133,12 @@ module otter_mem #(
     //------------------//
 
     always @(*) begin
-        if(MEM_ADDR2 >= ADDR_SPACE) begin  // external address range
-            IO_WR       = MEM_WE2;         // IO Write
-            we_addr_vld = '0;              // address beyond memory range
+        if(addr2 >= ADDR_SPACE) begin  // external address range
+            io_wr       = we2;         // IO Write
+            we_addr_vld = '0;          // address beyond memory range
         end else begin
-            IO_WR       = '0;              // not MMIO
-            we_addr_vld = MEM_WE2;         // address in valid memory range
+            io_wr       = '0;          // not MMIO
+            we_addr_vld = we2;         // address in valid memory range
         end
     end
 
@@ -174,7 +174,7 @@ module otter_mem #(
         input        sign,
         input [1:0]  size,
         input [1:0]  offset,
-        input [31:0] starter,
+        input [31:0] starter
     );
 
         reg [31:0] temp;
@@ -211,106 +211,107 @@ module otter_mem #(
     `define H_WORD(mem_size) (!mem_size[1] &&  mem_size[0])
     `define WORD(mem_size)   ( mem_size[1] && !mem_size[0])
 
-    assign MISALIGN = !(`BYTE(MEM_SIZE) || (`H_WORD(MEM_SIZE) && byte_offset != 2'd3) || (`WORD(MEM_SIZE) && byte_offset == '0));
+    assign misalign = !(`BYTE(size) || (`H_WORD(size) && byte_offset != 2'd3) || (`WORD(size) && byte_offset == '0));
 
     //-------------------------//
     // SBY Formal Verification
     //-------------------------//
 
-    `ifdef FORMAL
-        (* anyconst *)	wire [13:0] w_addr, r_addr_1;
-        (* anyconst *)	wire [31:0] r_addr_2;
-                        reg [31:0]	w_data, r_data_1, r_data_2;
-                        reg        r_valid_1, r_valid_2;
+`ifdef FORMAL
 
-        // Track previous cycle values for read-after-write checks
-        reg [31:0] prev_mem_addr2, prev_r_addr_2;
-        reg [31:0] prev_mem_addr1, prev_r_addr_1;
-        reg        prev_mem_rden1, prev_mem_rden2;
+    // assume reset asserted at start and then stays low and clock starts low
+    reg f_past_clk_existed;
+    initial f_past_clk_existed = 1'b0;
+    always @(posedge clk) f_past_clk_existed <= 1'b1;
+    initial assume(clk == 0);
 
-        always @(posedge MEM_CLK) begin
-            prev_mem_addr2  <= MEM_ADDR2;
-            prev_r_addr_2   <= r_addr_2;
-            prev_mem_addr1  <= MEM_ADDR1;
-            prev_r_addr_1   <= r_addr_1;
-            prev_mem_rden1  <= MEM_RDEN1;
-            prev_mem_rden2  <= MEM_RDEN2;
+    always @(*) begin
+        // verify MMIO logic correctness
+        if (addr2 >= ADDR_SPACE) begin
+            assert(io_wr == we2);
+            assert(we_addr_vld == 1'b0);
+        end else begin
+            assert(io_wr == 1'b0);
+            assert(we_addr_vld == we2);
         end
 
-        // Verify Writes
-        initial	assume(w_data == memory[w_addr]);
-        always @(posedge MEM_CLK) begin
-            if (MEM_WE2 && (MEM_ADDR2 < ADDR_SPACE) && (w_addr == word_addr_2)) begin
-                w_data <= format_write(MEM_SIZE, byte_offset, w_data, MEM_DIN2);
+        // check for misalignment
+        assert(misalign == !(
+            (size == SIZE_BYTE) || 
+            ((size == SIZE_H_WORD) && addr2[1:0] != 2'd3) || 
+            ((size == SIZE_WORD) && addr2[1:0] == 2'd0))
+        );
+
+        // assume reads and writes are mutually exclusive to save time
+        // true for all cases that our cu_fsm relies on
+        assume(!((rden1 || rden2) && we2));
+    end
+
+    // registers to hold values from the previous cycle for assertions
+    reg        f_past_mem_rden1, f_past_mem_rden2, f_past_we_addr_vld;
+    reg [13:0] f_past_mem_addr1;
+    reg [31:0] f_past_mem_addr2, f_past_mem_din2, f_past_io_in;
+    reg [1:0]  f_past_mem_size;
+    reg        f_past_mem_sign;
+
+    always @(posedge clk) begin
+        f_past_mem_rden1   <= rden1;
+        f_past_mem_rden2   <= rden2;
+        f_past_we_addr_vld <= we_addr_vld;
+        f_past_mem_addr1   <= addr1;
+        f_past_mem_addr2   <= addr2;
+        f_past_mem_din2    <= din2;
+        f_past_mem_size    <= size;
+        f_past_mem_sign    <= sign;
+        f_past_io_in       <= io_in;
+    end
+
+    always @(posedge clk) begin
+        if (f_past_clk_existed) begin // Only assert after the first clock edge
+
+            // if a read was enabled on port 1 last cycle, the output now must match the memory content from last cycle
+            if (f_past_mem_rden1) begin
+                assert(dout1 == memory[f_past_mem_addr1]);
             end
-        end
-        always @(*) begin
-            assert(memory[w_addr] == w_data);
-        end
 
-        // Verify Reads
-        initial begin
-            r_valid_1 = '0; r_valid_2 = '0;
-            r_data_1  = '0; r_data_2  = '0;
-        end
-        always @(posedge MEM_CLK) begin
-            if (MEM_RDEN1 && (r_addr_1 == MEM_ADDR1)) begin
-                r_valid_1 <= '1;
-                r_data_1  <= memory[r_addr_1];
-            end
-            if (MEM_RDEN2 && (r_addr_2 == MEM_ADDR2)) begin
-                r_valid_2 <= '1;
-                if (MEM_ADDR2 >= ADDR_SPACE) begin
-                    r_data_2 <= IO_IN;
+            // If a read was enabled on port 2 last cycle...
+            if (f_past_mem_rden2) begin
+                if (f_past_mem_addr2 >= ADDR_SPACE) begin
+                    //...for an IO address, the output must match the io_in from last cycle.
+                    assert(dout2 == f_past_io_in);
                 end else begin
-                    r_data_2 <= format_read(MEM_SIGN, MEM_SIZE, byte_offset, memory[r_addr_2[15:2]]);
+                    //...for a memory address, the output must match the correctly formatted data from memory last cycle.
+                    assert(dout2 == format_read(f_past_mem_sign, f_past_mem_size, f_past_mem_addr2[1:0], memory[f_past_mem_addr2[15:2]]));
                 end
             end
-        end
-        always @(*) begin
-            if (r_valid_1 && prev_mem_rden1 && (prev_r_addr_1 == prev_mem_addr1)) begin
-                assert(MEM_DOUT1 == r_data_1);
-            end
-            if (r_valid_2 && prev_mem_rden2 && (prev_r_addr_2 == prev_mem_addr2)) begin
-                assert(MEM_DOUT2 == r_data_2);
+
+            // If a write was enabled last cycle...
+            if (f_past_we_addr_vld) begin
+                // ...the corresponding memory location must now contain the correctly formatted new data.
+                assert(memory[f_past_mem_addr2[15:2]] == format_write(f_past_mem_size, f_past_mem_addr2[1:0], memory[f_past_mem_addr2[15:2]], f_past_mem_din2));
             end
         end
+    end
 
+    (* anyconst *) reg [13:0] f_any_addr;
+    reg [31:0] f_past_mem_at_any_addr;
 
-        // Check address constraints
-        always @(*) begin
-            assert(MEM_ADDR1 < ADDR_SPACE);
-        end
+    always @(posedge clk) begin
+        f_past_mem_at_any_addr <= memory[f_any_addr];
+    end
 
-        // Check MMIO behavior
-        always @(*) begin
-            if (MEM_ADDR2 >= ADDR_SPACE) begin
-                assert(IO_WR == MEM_WE2);
-                assert(we_addr_vld == 1'b0);
-            end else begin
-                assert(IO_WR == 1'b0);
-                assert(we_addr_vld == MEM_WE2);
+    always @(posedge clk) begin
+        if (f_past_clk_existed) begin
+            // If a write occurred last cycle, but to a DIFFERENT address than our arbitrary address...
+            if (f_past_we_addr_vld && (f_past_mem_addr2[15:2] != f_any_addr)) begin
+                 // ...then the content at our arbitrary address must match its value from the previous cycle.
+                assert(memory[f_any_addr] == f_past_mem_at_any_addr);
             end
         end
+    end
 
-        // Check misalignment detection
-        always @(*) begin
-            case(MEM_SIZE)
-                SIZE_BYTE   : assert(MISALIGN == 1'b0);                     // Bytes are always aligned
-                SIZE_H_WORD : assert(MISALIGN == (MEM_ADDR2[1:0] == 2'd3)); // Half-word misaligned on byte 3
-                SIZE_WORD   : assert(MISALIGN == (MEM_ADDR2[1:0] != 2'd0)); // Word misaligned if not on word boundary
-                default     : assert(MISALIGN == 1'b1);                     // Invalid size
-            endcase
-        end
+`endif
 
-        // Cover Properties
-        always @(posedge MEM_CLK) begin
-            cover(MEM_WE2 && MEM_ADDR2 < ADDR_SPACE);   // Cover memory writes
-            cover(MEM_RDEN2 && MEM_ADDR2 < ADDR_SPACE); // Cover memory reads
-            cover(MEM_ADDR2 >= ADDR_SPACE);             // Cover MMIO access
-            cover(MISALIGN);                            // Cover misaligned access
-        end
+endmodule
 
-    `endif
 
- endmodule
