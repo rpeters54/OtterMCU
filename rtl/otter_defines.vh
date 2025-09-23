@@ -1,25 +1,20 @@
-
-
 `ifndef DEFINES
 `define DEFINES
 
-    `define INSTRN_OPCODE(instrn)     (instrn[6:0])
-    `define INSTRN_I_R_PREFIX(instrn) (instrn[31:25])
-    `define INSTRN_FUNC(instrn)       (instrn[14:12])
+    //----------------//
+    // INSTRN Defines
+    //----------------//
+
     `define INSTRN_CSR(instrn)        (instrn[31:20])
-    `define INSTRN_RS1_ADDR(instrn)   (instrn[19:15])
+    `define INSTRN_MEM_SIZE(instrn)   (instrn[13:12])
+    `define INSTRN_MEM_SIGN(instrn)   (instrn[14])
+
+    `define INSTRN_FUNCT7(instrn)     (instrn[31:25])
     `define INSTRN_RS2_ADDR(instrn)   (instrn[24:20])
-    `define INSTRN_RSD_ADDR(instrn)   (instrn[11:7])
-
-    `define FUNC_BRANCH_BASE(func)    (func[2:1])
-    `define FUNC_BRANCH_SEL(func)     (func[0])
-
-    // Control Unit States
-    localparam ST_INIT   = 3'd0;
-    localparam ST_FETCH  = 3'd1;
-    localparam ST_EXEC   = 3'd2;
-    localparam ST_WR_BK  = 3'd3;
-    localparam ST_INTRPT = 3'd4;
+    `define INSTRN_RS1_ADDR(instrn)   (instrn[19:15])
+    `define INSTRN_FUNCT3(instrn)     (instrn[14:12])
+    `define INSTRN_RD_ADDR(instrn)    (instrn[11:7])
+    `define INSTRN_OPCODE(instrn)     (instrn[6:0])
 
     // Opcodes
     localparam OPCODE_OP_REG = 7'b0110011;
@@ -31,69 +26,70 @@
     localparam OPCODE_LUI    = 7'b0110111;
     localparam OPCODE_AUIPC  = 7'b0010111;
     localparam OPCODE_JAL    = 7'b1101111;
+    localparam OPCODE_FENCE  = 7'b0001111
     localparam OPCODE_SYS    = 7'b1110011;
 
-    // Opcode Funcs
-    localparam FUNC_I_JALR    = 3'b000;
+    // Opcode FUNCT3s
+    localparam FUNCT3_I_JALR    = 3'b000;
 
-    localparam FUNC_I_LB      = 3'b000;
-    localparam FUNC_I_LH      = 3'b001;
-    localparam FUNC_I_LW      = 3'b010;
-    localparam FUNC_I_LBU     = 3'b100;
-    localparam FUNC_I_LHU     = 3'b101;
+    localparam FUNCT3_I_LB      = 3'b000;
+    localparam FUNCT3_I_LH      = 3'b001;
+    localparam FUNCT3_I_LW      = 3'b010;
+    localparam FUNCT3_I_LBU     = 3'b100;
+    localparam FUNCT3_I_LHU     = 3'b101;
 
-    localparam FUNC_I_ADDI    = 3'b000;
-    localparam FUNC_I_SLTI    = 3'b010;
-    localparam FUNC_I_SLTIU   = 3'b011;
-    localparam FUNC_I_ORI     = 3'b110;
-    localparam FUNC_I_XORI    = 3'b100;
-    localparam FUNC_I_ANDI    = 3'b111;
-    localparam FUNC_I_SLI     = 3'b001;
-    localparam FUNC_I_SRI     = 3'b101;
+    localparam FUNCT3_I_ADDI    = 3'b000;
+    localparam FUNCT3_I_SLTI    = 3'b010;
+    localparam FUNCT3_I_SLTIU   = 3'b011;
+    localparam FUNCT3_I_ORI     = 3'b110;
+    localparam FUNCT3_I_XORI    = 3'b100;
+    localparam FUNCT3_I_ANDI    = 3'b111;
+    localparam FUNCT3_I_SLI     = 3'b001;
+    localparam FUNCT3_I_SRI     = 3'b101;
 
-    localparam FUNC_B_BEQ     = 3'b000;
-    localparam FUNC_B_BNE     = 3'b001;
-    localparam FUNC_B_BLT     = 3'b100;
-    localparam FUNC_B_BGE     = 3'b101;
-    localparam FUNC_B_BLTU    = 3'b110;
-    localparam FUNC_B_BGEU    = 3'b111;
+    localparam FUNCT3_B_BEQ     = 3'b000;
+    localparam FUNCT3_B_BNE     = 3'b001;
+    localparam FUNCT3_B_BLT     = 3'b100;
+    localparam FUNCT3_B_BGE     = 3'b101;
+    localparam FUNCT3_B_BLTU    = 3'b110;
+    localparam FUNCT3_B_BGEU    = 3'b111;
 
-    localparam FUNC_S_SB      = 3'b000;
-    localparam FUNC_S_SH      = 3'b001;
-    localparam FUNC_S_SW      = 3'b010;
+    localparam FUNCT3_S_SB      = 3'b000;
+    localparam FUNCT3_S_SH      = 3'b001;
+    localparam FUNCT3_S_SW      = 3'b010;
 
-    localparam FUNC_R_ADD     = 3'b000;
-    localparam FUNC_R_SUB     = 3'b000;
-    localparam FUNC_R_SLL     = 3'b001;
-    localparam FUNC_R_SLT     = 3'b010;
-    localparam FUNC_R_SLTU    = 3'b011;
-    localparam FUNC_R_XOR     = 3'b100;
-    localparam FUNC_R_SRL     = 3'b101;
-    localparam FUNC_R_SRA     = 3'b101;
-    localparam FUNC_R_OR      = 3'b110;
-    localparam FUNC_R_AND     = 3'b111;
+    localparam FUNCT3_R_ADD     = 3'b000;
+    localparam FUNCT3_R_SUB     = 3'b000;
+    localparam FUNCT3_R_SLL     = 3'b001;
+    localparam FUNCT3_R_SLT     = 3'b010;
+    localparam FUNCT3_R_SLTU    = 3'b011;
+    localparam FUNCT3_R_XOR     = 3'b100;
+    localparam FUNCT3_R_SRL     = 3'b101;
+    localparam FUNCT3_R_SRA     = 3'b101;
+    localparam FUNCT3_R_OR      = 3'b110;
+    localparam FUNCT3_R_AND     = 3'b111;
 
-    localparam FUNC_SYS_CSRRW = 3'b001;
-    localparam FUNC_SYS_MRET  = 3'b000;
+    localparam FUNCT3_SYS_CSRRW = 3'b001;
+    localparam FUNCT3_SYS_TRAPS = 3'b000;
 
-    // Instruction Prefixes
-    localparam PREFIX_I_R_0 = 7'b0000000;
-    localparam PREFIX_I_R_1 = 7'b0100000;
+    // Instruction FUNCT7s
+    localparam FUNCT7_I_R_Z = 7'bzzzzzzz;
+    localparam FUNCT7_I_R_0 = 7'b0000000;
+    localparam FUNCT7_I_R_1 = 7'b0100000;
 
-    localparam PREFIX_SYS_MRET    = 25'h061_0000;
+    localparam FUNCT7_RS2_SYS_ECALL  = 12'h000;
+    localparam FUNCT7_RS2_SYS_EBREAK = 12'h001;
+    localparam FUNCT7_RS2_SYS_MRET   = 12'h302;
+    localparam FUNCT7_RS2_SYS_WFI    = 12'h205;
 
-    localparam PRE_FUNC_R_ADD     = { PREFIX_I_R_0, FUNC_R_ADD };
-    localparam PRE_FUNC_R_SUB     = { PREFIX_I_R_1, FUNC_R_SUB };
-    localparam PRE_FUNC_R_SLL     = { PREFIX_I_R_0, FUNC_R_SLL };
-    localparam PRE_FUNC_R_SLT     = { PREFIX_I_R_0, FUNC_R_SLT };
-    localparam PRE_FUNC_R_SLTU    = { PREFIX_I_R_0, FUNC_R_SLTU};
-    localparam PRE_FUNC_R_XOR     = { PREFIX_I_R_0, FUNC_R_XOR };
-    localparam PRE_FUNC_R_SRL     = { PREFIX_I_R_0, FUNC_R_SRL };
-    localparam PRE_FUNC_R_SRA     = { PREFIX_I_R_1, FUNC_R_SRA };
-    localparam PRE_FUNC_R_OR      = { PREFIX_I_R_0, FUNC_R_OR  };
-    localparam PRE_FUNC_R_AND     = { PREFIX_I_R_0, FUNC_R_AND };
+    // Instruction Prefixes (everything except opcode)
+    localparam PREFIX_FENCE   = 25'b0000_zzzz_zzzz_00000_001_00000
+    localparam PREFIX_FENCE_I = 25'b0000_0000_0000_00000_001_00000
 
-    // ALU Functions
+    //--------------//
+    // ALU Defines
+    //--------------//
+
     localparam ALU_ADD  = 4'b0000;
     localparam ALU_SUB  = 4'b1000;
     localparam ALU_OR   = 4'b0110;
@@ -106,36 +102,61 @@
     localparam ALU_SLTU = 4'b0011;
     localparam ALU_LUI  = 4'b1001;
 
-    // CSR Register Addresses
+    localparam ALU_SRC_SEL_A_RS1       = 1'd0;
+    localparam ALU_SRC_SEL_A_UPPER_IMM = 1'd1;
+
+    localparam ALU_SRC_SEL_B_RS2        = 2'd0;
+    localparam ALU_SRC_SEL_B_I_TYPE_IMM = 2'd1;
+    localparam ALU_SRC_SEL_B_S_TYPE_IMM = 2'd2;
+    localparam ALU_SRC_SEL_B_PC_ADDR    = 2'd3;
+
+    //--------------//
+    // CSR Defines
+    //--------------//
+
     localparam CSR_MIE_ADDR   = 12'h304;
     localparam CSR_MTVEC_ADDR = 12'h305;
     localparam CSR_MEPC_ADDR  = 12'h341;
 
-    // Values for the MEM_SIZE parameters
+    //--------------//
+    // MEM Defines
+    //--------------//
+
     localparam MEM_SIZE_BYTE   = 2'd0;
     localparam MEM_SIZE_H_WORD = 2'd1;
     localparam MEM_SIZE_WORD   = 2'd2;
 
-    // DCDR Defines
-    localparam DCDR_ALU_SRC_SEL_A_RS1       = 1'd0;
-    localparam DCDR_ALU_SRC_SEL_A_UPPER_IMM = 1'd1;
+    //--------------//
+    // RFILE Defines
+    //--------------//
 
-    localparam DCDR_ALU_SRC_SEL_B_RS2        = 2'd0;
-    localparam DCDR_ALU_SRC_SEL_B_I_TYPE_IMM = 2'd1;
-    localparam DCDR_ALU_SRC_SEL_B_S_TYPE_IMM = 2'd2;
-    localparam DCDR_ALU_SRC_SEL_B_PC_ADDR    = 2'd3;
-    
-    localparam DCDR_RFILE_W_SEL_PC_ADDR_INC  = 2'd0;
-    localparam DCDR_RFILE_W_SEL_CSR_R_DATA   = 2'd1;
-    localparam DCDR_RFILE_W_SEL_MEM_DATA_OUT = 2'd2;
-    localparam DCDR_RFILE_W_SEL_ALU_RESULT   = 2'd3;
+    localparam RFILE_W_SEL_PC_ADDR_INC  = 2'd0;
+    localparam RFILE_W_SEL_CSR_R_DATA   = 2'd1;
+    localparam RFILE_W_SEL_MEM_DATA_OUT = 2'd2;
+    localparam RFILE_W_SEL_ALU_RESULT   = 2'd3;
 
-    localparam DCDR_PC_SRC_SEL_ADDR_INC = 3'd0;
-    localparam DCDR_PC_SRC_SEL_JALR     = 3'd1;
-    localparam DCDR_PC_SRC_SEL_BRANCH   = 3'd2;
-    localparam DCDR_PC_SRC_SEL_JAL      = 3'd3;
-    localparam DCDR_PC_SRC_SEL_MTVEC    = 3'd4;
-    localparam DCDR_PC_SRC_SEL_MEPC     = 3'd5;
+    //--------------//
+    // PC Defines
+    //--------------//
+
+    `define PC_MEM_ADDR1(pc)    (pc[15:2])
+
+    localparam PC_SRC_SEL_ADDR_INC = 3'd0;
+    localparam PC_SRC_SEL_JALR     = 3'd1;
+    localparam PC_SRC_SEL_BRANCH   = 3'd2;
+    localparam PC_SRC_SEL_JAL      = 3'd3;
+    localparam PC_SRC_SEL_MTVEC    = 3'd4;
+    localparam PC_SRC_SEL_MEPC     = 3'd5;
+
+    //--------------//
+    // FSM Defines
+    //--------------//
+
+    localparam ST_INIT   = 3'd0;
+    localparam ST_FETCH  = 3'd1;
+    localparam ST_EXEC   = 3'd2;
+    localparam ST_WR_BK  = 3'd3;
+    localparam ST_INTRPT = 3'd4;
 
     //--------------//
     // RVFI Defines
@@ -147,13 +168,13 @@
         output reg [31:0] rvfi_csr_``NAME``_rdata, \
         output reg [31:0] rvfi_csr_``NAME``_wdata,
 
-    `define RFVI_CSRS_TRACES /* Machine Trap CSRs */ \
-    	`RFVI_CSR_TRACE(mie)  \
-    	`RFVI_CSR_TRACE(mepc) \
-	    `RFVI_CSR_TRACE(mtvec)
+    `define RFVI_CSRS_TRACES  \
+        `RFVI_CSR_TRACE(mie)  \
+        `RFVI_CSR_TRACE(mepc) \
+        `RFVI_CSR_TRACE(mtvec)
 
     `define RVFI_OUTPUTS                  \
-    	output reg        rvfi_valid,     \
+        output reg        rvfi_valid,     \
         output reg [63:0] rvfi_order,     \
         output reg [31:0] rvfi_insn,      \
         output reg        rvfi_trap,      \

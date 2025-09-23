@@ -24,26 +24,22 @@
 module otter_cu_fsm (
     input             clk,
     input             rst,
-    input             mem_misalign,
     input             intrpt_vld,
     input      [31:0] instrn,
-`ifdef RISCV_FORMAL
-    output reg        invld_opcode,
-`endif
+
     output reg        pc_w_en, 
     output reg        rfile_w_en, 
-    output reg        mem_we2, 
-    output reg        mem_rden1, 
-    output reg        mem_rden2, 
-    output reg        cu_rst, 
+    output reg        dmem_w_en, 
+    output reg        imem_r_en, 
+    output reg        dmem_r_en, 
     output reg        csr_we, 
     output reg        intrpt_taken
 );
 
     wire [6:0] opcode;
-    wire [2:0] func;
+    wire [2:0] funct3;
     assign opcode = `INSTRN_OPCODE(instrn);
-    assign func   = `INSTRN_FUNC(instrn);
+    assign funct3 = `INSTRN_FUNCT3(instrn);
 
     reg invld_opcode, prev_intrpt_vld, intrpt_queued;
 
@@ -77,26 +73,23 @@ module otter_cu_fsm (
             end
         end
     end
-    
+
     always @(*) begin
-        invld_opcode = '0;
         pc_w_en      = '1; 
         rfile_w_en   = '0; 
-        mem_we2      = '0; 
-        mem_rden1    = '0; 
-        mem_rden2    = '0; 
-        cu_rst       = '0;
+        dmem_w_en    = '0; 
+        imem_r_en    = '0; 
+        dmem_r_en    = '0; 
         csr_we       = '0; 
         intrpt_taken = '0;
 
         case (present_state)
             ST_INIT : begin
-                cu_rst     = '1;
                 pc_w_en    = '0; 
                 next_state = ST_FETCH;
             end
             ST_FETCH : begin
-                mem_rden1  = '1;
+                imem_r_en  = '1;
                 pc_w_en    = '0;
                 next_state = ST_EXEC;
             end
@@ -115,16 +108,12 @@ module otter_cu_fsm (
                         rfile_w_en = '1;
                     end
                     OPCODE_LOAD : begin  //I-Type opcode *load instructions
-                        if (!mem_misalign) begin
-                            mem_rden2  = '1;
-                            pc_w_en    = '0; 
-                            next_state = ST_WR_BK;
-                        end
+                        dmem_r_en  = '1;
+                        pc_w_en    = '0; 
+                        next_state = ST_WR_BK;
                     end
                     OPCODE_STORE : begin  //S-Type opcode *store instructions
-                        if (!mem_misalign) begin
-                            mem_we2 = '1;
-                        end
+                        dmem_w_en = '1;
                     end
                     OPCODE_BRANCH : begin  //B-Type opcode;
                     end
@@ -139,13 +128,12 @@ module otter_cu_fsm (
                     end
                     OPCODE_SYS : begin //intrpt opcode
                         //only true for csrrw
-                        if (func[0] == '1) begin
+                        if (funct3[0] == '1) begin
                             csr_we     = '1;
                             rfile_w_en = '1;
                         end
                     end
                     default : begin // unimplemented/undefined opcode, generate trap
-                        invld_opcode = '1;
                     end
                 endcase 
 
@@ -225,7 +213,6 @@ module otter_cu_fsm (
         endcase
 
         // Prove that each control signal is asserted ONLY in the correct state(s).
-        assert(cu_rst       == (present_state == ST_INIT));
         assert(mem_rden1    == (present_state == ST_FETCH));
         assert(intrpt_taken == (present_state == ST_INTRPT));
 
@@ -283,7 +270,6 @@ module otter_cu_fsm (
         assert(!(mem_rden1 && mem_rden2));
         assert(!(mem_rden1 && mem_we2));
         assert(!(mem_rden2 && mem_we2));
-        assert(!(cu_rst && rfile_w_en));
     end
 
 `endif

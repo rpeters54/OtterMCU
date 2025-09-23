@@ -21,105 +21,54 @@
 
 `include "otter_defines.vh"
 
-module otter_mcu #(
-    parameter ROM_FILE = "default.mem"
-) (
+module otter_mcu (
     input         clk,
     input         rst, 
     input         intrpt, 
-    input  [31:0] iobus_in,
 
 `ifdef RISCV_FORMAL
     `RVFI_OUTPUTS
 `endif
 
-    output [31:0] iobus_out, 
-    output [31:0] iobus_addr,
-    output        iobus_wr
-);
+    input  [31:0] imem_r_data,
+    output        imem_r_en,
+    output [31:0] imem_addr,
 
-    assign iobus_addr = alu_result;
-    assign iobus_out  = rfile_r_rs2;
+    input  [31:0] dmem_r_data,
+    output        dmem_r_en,
+    output        dmem_w_en,
+    output [3:0]  dmem_w_strb,
+    output [31:0] dmem_addr,
+    output [31:0] dmem_w_data
+);
 
     //---------------------------------------------------------//
     // Program Counter: keeps track of the current instruction
     //---------------------------------------------------------//
 
     wire [31:0] pc_next_addr, pc_addr, pc_addr_inc;
+    wire pc_w_en;
 
     otter_pc pc (
         .clk(clk),
-        .rst(cu_rst),
+        .rst(rst),
         .w_en(pc_w_en),
-        .src_sel(PC_src_sel),
-        .jalr(addr_gen_jalr),
-        .branch(addr_gen_branch),
-        .jal(addr_gen_jal),
-        .mtvec(csr_mtvec),
-        .mepc(csr_mepc),
-`ifdef RISCV_FORMAL
         .next_addr(pc_next_addr),
-`endif
         .addr(pc_addr),
         .addr_inc(pc_addr_inc)
-    );
-
-    //-------------------------------------------------------------------//
-    // Memory: stores all relevant data and instructions for the program
-    //-------------------------------------------------------------------//
-
-    // Memory wires
-    wire [31:0] mem_addr_2, mem_din_2, mem_inst_out, mem_data_out;
-    wire [13:0] mem_addr_1;
-    wire [1:0]  mem_size;
-    wire        mem_sign;
-
-    assign mem_addr_1 = pc_addr[15:2];
-    assign mem_addr_2 = alu_result;
-    assign mem_din_2 = rfile_r_rs2;
-    assign mem_size = mem_inst_out[13:12];
-    assign mem_sign = mem_inst_out[14];
-
-    otter_mem #(ROM_FILE) mem (
-        .clk(clk), 
-        .rden1(mem_rden1), 
-        .rden2(mem_rden2),
-        .we2(mem_we2), 
-        .addr1(mem_addr_1), 
-        .addr2(mem_addr_2),
-        .din2(mem_din_2), 
-        .size(mem_size), 
-        .sign(mem_sign), 
-`ifdef RISCV_FORMAL
-        .misalign(mem_misalign),
-`endif
-        .io_in(iobus_in), 
-        .io_wr(iobus_wr),
-        .dout1(mem_inst_out), 
-        .dout2(mem_data_out)
     );
 
     //----------------------------------------------------------------------//
     // REG_FILE w/ Input MUX: contains all registers needed for the program
     //----------------------------------------------------------------------//
 
-    // Reg_File wires
     reg [31:0] rfile_w_data;
     wire [31:0] rfile_r_rs1, rfile_r_rs2;
-    wire [4:0]  rfile_r_addr1, rfile_r_addr2, rfile_w_addr;
+    wire rfile_w_en;
 
-    assign rfile_r_addr1 = `INSTRN_RS1_ADDR(mem_inst_out);
-    assign rfile_r_addr2 = `INSTRN_RS2_ADDR(mem_inst_out);
-    assign rfile_w_addr  = `INSTRN_RSD_ADDR(mem_inst_out);
-
-    always @(*) begin
-        case (rfile_w_sel) 
-            2'd0 : rfile_w_data = pc_addr_inc;
-            2'd1 : rfile_w_data = csr_r_data;
-            2'd2 : rfile_w_data = mem_data_out;
-            2'd3 : rfile_w_data = alu_result;
-        endcase
-    end
+    wire [4:0] rfile_r_addr1 = `INSTRN_RS1_ADDR(imem_r_data);
+    wire [4:0] rfile_r_addr2 = `INSTRN_RS2_ADDR(imem_r_data);
+    wire [4:0] rfile_w_addr  = `INSTRN_RD_ADDR(imem_r_data);
 
     otter_rfile rf (
         .clk(clk),
@@ -136,12 +85,11 @@ module otter_mcu #(
     // Immediate Generator: creates all types of immediates needed for different instructions
     //----------------------------------------------------------------------------------------//
 
-    // Immed_Gen wires
     wire [31:0] upper_immed, i_type_immed, s_type_immed, 
                 branch_immed, jump_immed;
 
     otter_imm_gen imd (
-        .instrn(mem_inst_out),
+        .instrn(imem_r_data),
         .upper_immed(upper_immed), 
         .i_type_immed(i_type_immed), 
         .s_type_immed(s_type_immed), 
@@ -153,22 +101,10 @@ module otter_mcu #(
     // ALU w/ Input MUXES: location of all logical and arithmetic operations
     //-----------------------------------------------------------------------//
 
-    // ALU connections
     wire [31:0] alu_result;
     reg  [31:0] alu_src_a, alu_src_b;
- 
-    always @(*) begin
-        case (alu_src_sel_a)
-            1'd0 : alu_src_a = rfile_r_rs1;
-            1'd1 : alu_src_a = upper_immed;
-        endcase
-        case (alu_src_sel_b) 
-            2'd0 : alu_src_b = rfile_r_rs2;
-            2'd1 : alu_src_b = i_type_immed;
-            2'd2 : alu_src_b = s_type_immed;
-            2'd3 : alu_src_b = pc_addr;
-        endcase
-    end
+    wire [3:0] alu_func;
+
     otter_alu alu (
         .src_a(alu_src_a), 
         .src_b(alu_src_b),
@@ -180,7 +116,6 @@ module otter_mcu #(
     // Branch Address Generator: generates addresses for use in branch and jump instrucitions
     //----------------------------------------------------------------------------------------//
 
-    // Branch_Addr_Gen wires
     wire [31:0] addr_gen_jalr, addr_gen_branch, addr_gen_jal;
 
     otter_br_addr_gen bag (
@@ -198,7 +133,6 @@ module otter_mcu #(
     // Branch Condition Generator: verifies conditions of rs1 and rs2 for use in branch instructions
     //-----------------------------------------------------------------------------------------------//
 
-    // Branch_Cond_Gen wires
     wire cond_gen_eq, cond_gen_lt, cond_gen_ltu;
 
     otter_br_cond_gen bcg (
@@ -213,51 +147,67 @@ module otter_mcu #(
     // Control Unit Decoder: controls all mux selectors based on the instruction opcode and function number
     //------------------------------------------------------------------------------------------------------//
 
-    // CU_DCDR wires
-    wire alu_src_sel_a;
-    wire [1:0] alu_src_sel_b, rfile_w_sel;
-    wire [2:0] PC_src_sel;
-    wire [3:0] alu_func;
+    wire mret_instrn, ecall_instrn, ebreak_instrn, illegal_instrn;
 
     otter_cu_dcdr dcdr (
-        .instrn(mem_inst_out), 
-        .intrpt_taken(intrpt_taken), 
+        .instrn(imem_r_data), 
+
+        .trap_taken(intrpt_taken), 
+
         .br_eq(cond_gen_eq), 
         .br_lt(cond_gen_lt), 
         .br_ltu(cond_gen_ltu),
+
+        .pc_addr_inc(pc_addr_inc),
+        .csr_r_data(csr_r_data),
+        .mem_data_out(dmem_r_data),
+        .alu_result(alu_result),
+
+        .rfile_r_rs1(rfile_r_rs1),
+        .upper_immed(upper_immed),
+
+        .rfile_r_rs2(rfile_r_rs2),
+        .i_type_immed(i_type_immed),
+        .s_type_immed(s_type_immed),
+        .pc_addr(pc_addr),
+
+        .jalr(addr_gen_jalr),
+        .branch(addr_gen_branch),
+        .jal(addr_gen_jal),
+        .mtvec(csr_mtvec),
+        .mepc(csr_mepc),
+
         .alu_func(alu_func),
-        .alu_src_sel_a(alu_src_sel_a),
-        .alu_src_sel_b(alu_src_sel_b),
-        .pc_src_sel(PC_src_sel),
-        .rfile_w_sel(rfile_w_sel)
+        .alu_src_a(alu_src_a),
+        .alu_src_b(alu_src_b),
+        .rfile_w_data(rfile_w_data),
+        .pc_next_addr(pc_next_addr),
+        .dmem_w_strb(dmem_w_strb),
+
+        .mret_instrn(mret_instrn),
+        .ecall_instrn(ecall_instrn),
+        .ebreak_instrn(ebreak_instrn),
+        .illegal_instrn(illegal_instrn)
     );
 
     //---------------------------------------------------------------------------------------//
     // Control Unit FSM: controls enable signals throughout the OTTER based on current state
     //---------------------------------------------------------------------------------------//
 
-    // CU_FSM wires
-    wire pc_w_en, rfile_w_en, mem_we2, mem_rden1, mem_misalign,
-         mem_rden2, cu_rst, csr_WE, intrpt_taken, intrpt_vld, invld_opcode;
-
+    wire csr_we, intrpt_taken, intrpt_vld;
     assign intrpt_vld = intrpt & csr_mie; 
 
     otter_cu_fsm fsm (
         .clk(clk),
         .rst(rst),
-        .mem_misalign(mem_misalign),
         .intrpt_vld(intrpt_vld),
-        .instrn(mem_inst_out),
-`ifdef RISCV_FORMAL
-        .invld_opcode(invld_opcode),
-`endif
+        .instrn(imem_r_data),
         .pc_w_en(pc_w_en), 
         .rfile_w_en(rfile_w_en), 
-        .mem_we2(mem_we2), 
-        .mem_rden1(mem_rden1), 
-        .mem_rden2(mem_rden2), 
-        .cu_rst(cu_rst), 
-        .csr_we(csr_WE), 
+        .dmem_w_en(dmem_w_en), 
+        .imem_r_en(imem_r_en), 
+        .dmem_r_en(dmem_r_en), 
+        .csr_we(csr_we), 
         .intrpt_taken(intrpt_taken)
     );
 
@@ -267,15 +217,17 @@ module otter_mcu #(
 
     // CSR wires
     wire        csr_mie;
+    wire [11:0] csr_addr;
     wire [31:0] csr_mtvec, csr_mepc, csr_w_data, csr_r_data;
 
     assign csr_w_data = rfile_r_rs1;
+    assign csr_addr = `INSTRN_CSR(imem_r_data);
     otter_csr csr (
         .clk(clk),
-        .rst(cu_rst), 
+        .rst(rst), 
         .intrpt_taken(intrpt_taken), 
-        .w_en(csr_WE),
-        .addr(mem_inst_out[31:20]),
+        .w_en(csr_we),
+        .addr(csr_addr),
         .prog_count(pc_addr), 
         .w_data(csr_w_data),
         .csr_mie(csr_mie),
