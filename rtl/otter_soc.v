@@ -40,7 +40,7 @@ module otter_soc #(
     // MCU: RV32I Hart
     //-------------------------------------------------------------------//
 
-    wire        imem_r_en, dmem_r_en, dmem_w_en;
+    wire        dmem_r_en, dmem_w_en;
     wire [3:0]  dmem_w_strb;
     wire [31:0] imem_addr, dmem_r_data, dmem_addr, dmem_w_data;
     reg  [31:0] imem_r_data;
@@ -51,7 +51,6 @@ module otter_soc #(
         .intrpt(intrpt),
 
         .imem_r_data(imem_r_data),
-        .imem_r_en(imem_r_en),
         .imem_addr(imem_addr),
 
         .dmem_r_data(dmem_r_data),
@@ -78,9 +77,7 @@ module otter_soc #(
 
     // internal imem
     always @(posedge clock) begin
-        if (imem_r_en) begin
-            imem_r_data <= imem[imem_addr[ADDR_EXP+1:2]];
-        end
+        imem_r_data <= imem[imem_addr[ADDR_EXP+1:2]];
     end
 
     // internal dmem

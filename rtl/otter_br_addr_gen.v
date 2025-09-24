@@ -30,7 +30,7 @@ module otter_br_addr_gen (
     output [31:0] branch_addr, 
     output [31:0] jalr_addr
 );
-    
+
     assign jal_addr    = jump_immed   + prog_count;
     assign branch_addr = branch_immed + prog_count;
     assign jalr_addr   = i_type_immed + rs1;

@@ -41,8 +41,6 @@ module otter_cu_fsm (
     assign opcode = `INSTRN_OPCODE(instrn);
     assign funct3 = `INSTRN_FUNCT3(instrn);
 
-    reg invld_opcode, prev_intrpt_vld, intrpt_queued;
-
     // state variables and initial values
     reg [2:0] present_state, next_state;
     initial begin
@@ -59,42 +57,22 @@ module otter_cu_fsm (
         end
     end
 
-    // Make interrupt valid signal a one-shot pulse
-    always @(posedge clk) begin
-        if (rst == '1) begin 
-            prev_intrpt_vld <= '0;
-            intrpt_queued   <= '0;
-        end else begin
-            prev_intrpt_vld <= intrpt_vld;
-            if (!prev_intrpt_vld && intrpt_vld) begin
-                intrpt_queued <= '1;
-            end else if (present_state == ST_INTRPT) begin
-                intrpt_queued <= '0;
-            end
-        end
-    end
-
     always @(*) begin
         pc_w_en      = '1; 
         rfile_w_en   = '0; 
         dmem_w_en    = '0; 
-        imem_r_en    = '0; 
+        imem_r_en    = '1; 
         dmem_r_en    = '0; 
         csr_we       = '0; 
-        intrpt_taken = '0;
 
         case (present_state)
             ST_INIT : begin
                 pc_w_en    = '0; 
-                next_state = ST_FETCH;
-            end
-            ST_FETCH : begin
-                imem_r_en  = '1;
-                pc_w_en    = '0;
+                imem_r_en  = '0;
                 next_state = ST_EXEC;
             end
             ST_EXEC :  begin
-                next_state = ST_FETCH;
+                next_state = ST_EXEC;
 
                 // instruction cases
                 case(opcode) 
@@ -109,7 +87,7 @@ module otter_cu_fsm (
                     end
                     OPCODE_LOAD : begin  //I-Type opcode *load instructions
                         dmem_r_en  = '1;
-                        pc_w_en    = '0; 
+                        pc_w_en    = '0;
                         next_state = ST_WR_BK;
                     end
                     OPCODE_STORE : begin  //S-Type opcode *store instructions
@@ -127,37 +105,27 @@ module otter_cu_fsm (
                         rfile_w_en = '1;
                     end
                     OPCODE_SYS : begin //intrpt opcode
-                        //only true for csrrw
-                        if (funct3[0] == '1) begin
-                            csr_we     = '1;
-                            rfile_w_en = '1;
-                        end
+                        case (funct3)
+                            FUNCT3_SYS_CSRRW : begin
+                                csr_we     = '1;
+                                rfile_w_en = '1;
+                            end
+                            default : begin end
+                        endcase
                     end
-                    default : begin // unimplemented/undefined opcode, generate trap
-                    end
+                    default : begin end
                 endcase 
 
-                // jump to interrupt if queued,
-                // defer until next cycle if writing back
-                if (intrpt_queued == '1 && next_state != ST_WR_BK) begin
-                    next_state = ST_INTRPT;
-                end	
+                // flag interrupt taken for decoder if not going to writeback
+                if (intrpt_vld && next_state != ST_WR_BK) begin
+                    intrpt_taken = '1;
+                end
             end
             //special case for load instructions
             ST_WR_BK : begin
                 //memory reads require an extra clock cycle
                 rfile_w_en = '1;
-                if (intrpt_queued == '1) begin
-                    next_state = ST_INTRPT;
-                end else begin
-                    next_state = ST_FETCH;
-                end
-            end
-            //interrupt routine
-            ST_INTRPT : begin
-                //output signal sent to CSR and DCDR
-                intrpt_taken  = '1;
-                next_state = ST_FETCH;
+                next_state = ST_EXEC;
             end
             default : begin 
                 next_state = ST_INIT;

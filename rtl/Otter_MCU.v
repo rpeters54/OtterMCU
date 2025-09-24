@@ -31,7 +31,6 @@ module otter_mcu (
 `endif
 
     input  [31:0] imem_r_data,
-    output        imem_r_en,
     output [31:0] imem_addr,
 
     input  [31:0] dmem_r_data,
@@ -86,7 +85,7 @@ module otter_mcu (
     //----------------------------------------------------------------------------------------//
 
     wire [31:0] upper_immed, i_type_immed, s_type_immed, 
-                branch_immed, jump_immed;
+                branch_immed, jump_immed, z_immed;
 
     otter_imm_gen imd (
         .instrn(imem_r_data),
@@ -94,7 +93,8 @@ module otter_mcu (
         .i_type_immed(i_type_immed), 
         .s_type_immed(s_type_immed), 
         .branch_immed(branch_immed), 
-        .jump_immed(jump_immed)
+        .jump_immed(jump_immed),
+        .z_immed(z_immed)
     );
 
     //-----------------------------------------------------------------------//
@@ -147,35 +147,38 @@ module otter_mcu (
     // Control Unit Decoder: controls all mux selectors based on the instruction opcode and function number
     //------------------------------------------------------------------------------------------------------//
 
-    wire mret_instrn, ecall_instrn, ebreak_instrn, illegal_instrn;
+    wire intrpt_vld = intrpt & csr_mie; 
 
     otter_cu_dcdr dcdr (
         .instrn(imem_r_data), 
-
-        .trap_taken(intrpt_taken), 
+        .intrpt_vld(intrpt_vld),
 
         .br_eq(cond_gen_eq), 
         .br_lt(cond_gen_lt), 
         .br_ltu(cond_gen_ltu),
 
+        .pc_addr(pc_addr),
         .pc_addr_inc(pc_addr_inc),
-        .csr_r_data(csr_r_data),
-        .mem_data_out(dmem_r_data),
+
+        .dmem_r_data(dmem_r_data),
+
         .alu_result(alu_result),
 
         .rfile_r_rs1(rfile_r_rs1),
-        .upper_immed(upper_immed),
-
         .rfile_r_rs2(rfile_r_rs2),
+
         .i_type_immed(i_type_immed),
         .s_type_immed(s_type_immed),
-        .pc_addr(pc_addr),
+        .upper_immed(upper_immed),
+        .z_immed(z_immed),
 
-        .jalr(addr_gen_jalr),
-        .branch(addr_gen_branch),
-        .jal(addr_gen_jal),
-        .mtvec(csr_mtvec),
-        .mepc(csr_mepc),
+        .jalr_addr(addr_gen_jalr),
+        .branch_addr(addr_gen_branch),
+        .jal_addr(addr_gen_jal),
+
+        .csr_r_data(csr_r_data),
+        .csr_mtvec_value(csr_mtvec),
+        .csr_mepc_value(csr_mepc),
 
         .alu_func(alu_func),
         .alu_src_a(alu_src_a),
@@ -184,31 +187,11 @@ module otter_mcu (
         .pc_next_addr(pc_next_addr),
         .dmem_w_strb(dmem_w_strb),
 
-        .mret_instrn(mret_instrn),
-        .ecall_instrn(ecall_instrn),
-        .ebreak_instrn(ebreak_instrn),
-        .illegal_instrn(illegal_instrn)
-    );
-
-    //---------------------------------------------------------------------------------------//
-    // Control Unit FSM: controls enable signals throughout the OTTER based on current state
-    //---------------------------------------------------------------------------------------//
-
-    wire csr_we, intrpt_taken, intrpt_vld;
-    assign intrpt_vld = intrpt & csr_mie; 
-
-    otter_cu_fsm fsm (
-        .clk(clk),
-        .rst(rst),
-        .intrpt_vld(intrpt_vld),
-        .instrn(imem_r_data),
-        .pc_w_en(pc_w_en), 
-        .rfile_w_en(rfile_w_en), 
-        .dmem_w_en(dmem_w_en), 
-        .imem_r_en(imem_r_en), 
-        .dmem_r_en(dmem_r_en), 
-        .csr_we(csr_we), 
-        .intrpt_taken(intrpt_taken)
+        .pc_w_en(pc_w_en),
+        .rfile_w_en(rfile_w_en),
+        .dmem_w_en(dmem_w_en),
+        .dmem_r_en(dmem_r_en),
+        .csr_w_en(csr_w_en)
     );
 
     //----------------------------------------------------------------------//
@@ -216,7 +199,7 @@ module otter_mcu (
     //----------------------------------------------------------------------//
 
     // CSR wires
-    wire        csr_mie;
+    wire        csr_mie, csr_w_en;
     wire [11:0] csr_addr;
     wire [31:0] csr_mtvec, csr_mepc, csr_w_data, csr_r_data;
 
@@ -331,6 +314,5 @@ module otter_mcu (
             end
         end
     `endif
-    
 
 endmodule

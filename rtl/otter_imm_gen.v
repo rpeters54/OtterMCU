@@ -29,7 +29,8 @@ module otter_imm_gen (
     output reg [31:0] i_type_immed, 
     output reg [31:0] s_type_immed, 
     output reg [31:0] branch_immed, 
-    output reg [31:0] jump_immed
+    output reg [31:0] jump_immed,
+    output reg [31:0] z_immed
 );
 
     always @(*) begin
@@ -38,6 +39,7 @@ module otter_imm_gen (
         s_type_immed = {{21{instrn[31]}}, instrn[30:25], instrn[11:7]};
         branch_immed = {{20{instrn[31]}}, instrn[7], instrn[30:25], instrn[11:8], 1'd0};
         jump_immed   = {{12{instrn[31]}}, instrn[19:12], instrn[20], instrn[30:21], 1'd0};
+        z_immed      = {27'd0, instrn[19:15]};
     end
 
 endmodule
