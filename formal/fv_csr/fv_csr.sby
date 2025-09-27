@@ -21,9 +21,9 @@ cover: expect pass
 smtbmc boolector
 
 [script]
-read -formal otter_cu_fsm.v
-prep -top otter_cu_fsm
+read -formal otter_csr.v
+prep -top otter_csr
 
 [files]
-../../rtl/otter_cu_fsm.v
+../../rtl/otter_csr.v
 ../../rtl/otter_defines.vh

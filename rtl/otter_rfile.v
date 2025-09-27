@@ -31,28 +31,28 @@ module otter_rfile (
     output [31:0] r_rs2
 );
 
-    // 32, 32-bit registers
-    reg [31:0] rfile [0:31]; 
+    // 31, 32-bit registers, x0 is hardwired to zero
+    reg  [31:0] rfile [1:31]; 
 
     // registers are intially zeroed for testing
-    // r0 is zero forever
     initial begin
-        for (int i = 0; i < 32; i++) begin
-            rfile[i] = 32'd0;
+        for (int i = 1; i < 32; i++) begin
+            rfile[i] = '0;
         end
     end
 
     // dual read functionality
     // select output register value by address
-    assign r_rs1 = rfile[r_addr1];
-    assign r_rs2 = rfile[r_addr2]; 
+    assign r_rs1 = r_addr1 == '0 ? '0 : rfile[r_addr1];
+    assign r_rs2 = r_addr2 == '0 ? '0 : rfile[r_addr2]; 
 
     // single write functionality
     always @(posedge clk) begin
         // can not write to register 0
-        if (w_en && w_addr != 0) begin
+        if (w_en && w_addr != '0) begin
             rfile[w_addr] <= w_data;
         end
     end
+
 
 endmodule

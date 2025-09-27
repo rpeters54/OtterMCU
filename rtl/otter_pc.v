@@ -37,7 +37,7 @@ module otter_pc (
         if (rst) begin
             addr <= 0;
         end else if (w_en) begin
-            addr <= next_addr;
+            addr <= next_addr & 32'hFFFF_FFFC;
         end
     end
 

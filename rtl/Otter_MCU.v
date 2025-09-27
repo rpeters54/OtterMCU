@@ -30,23 +30,156 @@ module otter_mcu (
     `RVFI_OUTPUTS
 `endif
 
-    input  [31:0] imem_r_data,
-    output [31:0] imem_addr,
+    input      [31:0] imem_r_data,
+    output reg [31:0] imem_addr,
 
-    input  [31:0] dmem_r_data,
-    output        dmem_r_en,
-    output        dmem_w_en,
-    output [3:0]  dmem_w_strb,
-    output [31:0] dmem_addr,
-    output [31:0] dmem_w_data
+    input      [31:0] dmem_r_data,
+    output            dmem_r_en,
+    output            dmem_w_en,
+    output     [3:0]  dmem_w_strb,
+    output     [31:0] dmem_addr,
+    output     [31:0] dmem_w_data
 );
+
+    wire [31:0] alu_result;
+    wire [31:0] rfile_r_rs1, rfile_r_rs2;
+
+    assign dmem_addr   = alu_result;
+    assign dmem_w_data = rfile_r_rs2;
+
+    //------------------------------------------------------------------------------------------------------//
+    // Control Unit Decoder: controls all mux selectors based on the instruction opcode and function number
+    //------------------------------------------------------------------------------------------------------//
+
+    wire cond_gen_eq;
+    wire cond_gen_lt; 
+    wire cond_gen_ltu;
+
+    wire csr_intrpt_vld;
+    wire csr_read_only;
+    wire csr_addr_vld;
+
+    wire [3:0] alu_func;
+    wire      alu_src_sel_a;
+    wire [1:0] alu_src_sel_b;
+    wire [1:0] rfile_w_sel;
+    wire [2:0] pc_src_sel;
+    wire [2:0] csr_op_sel;
+
+    wire [31:0] i_type_immed, s_type_immed;
+    wire [1:0] addr_load_alignment  = rfile_r_rs1[1:0] + i_type_immed[1:0];
+    wire [1:0] addr_store_alignment = rfile_r_rs1[1:0] + s_type_immed[1:0];
+
+    wire pc_w_en;
+    wire rfile_w_en;
+    wire csr_w_en;
+    wire dcdr_stall;
+
+    // Addr Gen values
+    wire [31:0] addr_gen_jalr, addr_gen_branch, addr_gen_jal;
+
+
+    otter_cu_dcdr dcdr (
+        .clk(clk),
+        .rst(rst),
+        .instrn(imem_r_data), 
+
+        .br_eq(cond_gen_eq), 
+        .br_lt(cond_gen_lt), 
+        .br_ltu(cond_gen_ltu),
+
+        .csr_intrpt_vld(csr_intrpt_vld),
+        .csr_addr_vld(csr_addr_vld),
+        .csr_read_only(csr_read_only),
+
+        .addr_load_alignment(addr_load_alignment),
+        .addr_store_alignment(addr_store_alignment),
+        .addr_jalr_alignment(addr_gen_jalr[1:0]),
+        .addr_branch_alignment(addr_gen_branch[1:0]),
+        .addr_jal_alignment(addr_gen_jal[1:0]),
+
+        .alu_func(alu_func),
+        .alu_src_sel_a(alu_src_sel_a),
+        .alu_src_sel_b(alu_src_sel_b),
+        .rfile_w_sel(rfile_w_sel),
+        .pc_src_sel(pc_src_sel),
+        .csr_op_sel(csr_op_sel),
+        .dmem_w_strb(dmem_w_strb),
+
+        .pc_w_en(pc_w_en),
+        .rfile_w_en(rfile_w_en),
+        .dmem_w_en(dmem_w_en),
+        .dmem_r_en(dmem_r_en),
+        .csr_w_en(csr_w_en),
+        .stall(dcdr_stall)
+    );
+
+    //------------------------------------------------------------------------------------------------------//
+    // Input Selector Muxes: Muxes managed by the decoder, selects inputs to other blocks
+    //------------------------------------------------------------------------------------------------------//
+
+    wire [2:0]  funct3 = `INSTRN_FUNCT3(imem_r_data);
+
+    // PC values
+    wire [31:0] pc_addr, pc_addr_inc;
+
+
+    // Immediate Gen values
+    wire [31:0] upper_immed, branch_immed, jump_immed, z_immed;
+
+    // CSR values
+    wire [31:0] csr_r_data, csr_mtvec, csr_mepc;
+
+    // selector outputs
+    reg  [31:0] alu_src_a, alu_src_b, rfile_w_data, pc_next_addr, csr_w_data;
+
+    always @(*) begin
+        case (alu_src_sel_a)
+            ALU_SRC_SEL_A_RS1         : alu_src_a = rfile_r_rs1;
+            ALU_SRC_SEL_A_UPPER_IMM   : alu_src_a = upper_immed;
+        endcase
+        case (alu_src_sel_b) 
+            ALU_SRC_SEL_B_RS2         : alu_src_b = rfile_r_rs2;
+            ALU_SRC_SEL_B_I_TYPE_IMM  : alu_src_b = i_type_immed;
+            ALU_SRC_SEL_B_S_TYPE_IMM  : alu_src_b = s_type_immed;
+            ALU_SRC_SEL_B_PC_ADDR     : alu_src_b = pc_addr;
+        endcase
+    end
+    always @(*) begin
+        case (rfile_w_sel) 
+            RFILE_W_SEL_PC_ADDR_INC : rfile_w_data = pc_addr_inc;
+            RFILE_W_SEL_CSR_R_DATA  : rfile_w_data = csr_r_data;
+            RFILE_W_SEL_DMEM_R_DATA : rfile_w_data = dmem_r_data;
+            RFILE_W_SEL_ALU_RESULT  : rfile_w_data = alu_result;
+        endcase
+    end
+    always @(*) begin
+        case(pc_src_sel)
+            PC_SRC_SEL_ADDR_INC : pc_next_addr = pc_addr_inc;
+            PC_SRC_SEL_JALR     : pc_next_addr = addr_gen_jalr;
+            PC_SRC_SEL_BRANCH   : pc_next_addr = addr_gen_branch;
+            PC_SRC_SEL_JAL      : pc_next_addr = addr_gen_jal;
+            PC_SRC_SEL_MTVEC    : pc_next_addr = csr_mtvec;
+            PC_SRC_SEL_MEPC     : pc_next_addr = csr_mepc;
+            default             : pc_next_addr = 32'hDEADDEAD;
+        endcase
+    end
+    always @(*) begin
+        case (funct3[2])
+            CSR_FUNCT3_HIGH_REG : csr_w_data = rfile_r_rs1;
+            CSR_FUNCT3_HIGH_IMM : csr_w_data = z_immed;
+        endcase
+    end
+    always @(*) begin
+        case (dcdr_stall)
+            '1 : imem_addr = pc_addr;
+            '0 : imem_addr = pc_next_addr;
+        endcase
+    end
 
     //---------------------------------------------------------//
     // Program Counter: keeps track of the current instruction
     //---------------------------------------------------------//
-
-    wire [31:0] pc_next_addr, pc_addr, pc_addr_inc;
-    wire pc_w_en;
 
     otter_pc pc (
         .clk(clk),
@@ -60,10 +193,6 @@ module otter_mcu (
     //----------------------------------------------------------------------//
     // REG_FILE w/ Input MUX: contains all registers needed for the program
     //----------------------------------------------------------------------//
-
-    reg [31:0] rfile_w_data;
-    wire [31:0] rfile_r_rs1, rfile_r_rs2;
-    wire rfile_w_en;
 
     wire [4:0] rfile_r_addr1 = `INSTRN_RS1_ADDR(imem_r_data);
     wire [4:0] rfile_r_addr2 = `INSTRN_RS2_ADDR(imem_r_data);
@@ -84,9 +213,6 @@ module otter_mcu (
     // Immediate Generator: creates all types of immediates needed for different instructions
     //----------------------------------------------------------------------------------------//
 
-    wire [31:0] upper_immed, i_type_immed, s_type_immed, 
-                branch_immed, jump_immed, z_immed;
-
     otter_imm_gen imd (
         .instrn(imem_r_data),
         .upper_immed(upper_immed), 
@@ -101,10 +227,6 @@ module otter_mcu (
     // ALU w/ Input MUXES: location of all logical and arithmetic operations
     //-----------------------------------------------------------------------//
 
-    wire [31:0] alu_result;
-    reg  [31:0] alu_src_a, alu_src_b;
-    wire [3:0] alu_func;
-
     otter_alu alu (
         .src_a(alu_src_a), 
         .src_b(alu_src_b),
@@ -115,8 +237,6 @@ module otter_mcu (
     //----------------------------------------------------------------------------------------//
     // Branch Address Generator: generates addresses for use in branch and jump instrucitions
     //----------------------------------------------------------------------------------------//
-
-    wire [31:0] addr_gen_jalr, addr_gen_branch, addr_gen_jal;
 
     otter_br_addr_gen bag (
         .rs1(rfile_r_rs1), 
@@ -133,8 +253,6 @@ module otter_mcu (
     // Branch Condition Generator: verifies conditions of rs1 and rs2 for use in branch instructions
     //-----------------------------------------------------------------------------------------------//
 
-    wire cond_gen_eq, cond_gen_lt, cond_gen_ltu;
-
     otter_br_cond_gen bcg (
         .rs1(rfile_r_rs1), 
         .rs2(rfile_r_rs2),
@@ -143,80 +261,31 @@ module otter_mcu (
         .br_ltu(cond_gen_ltu)
     );
 
-    //------------------------------------------------------------------------------------------------------//
-    // Control Unit Decoder: controls all mux selectors based on the instruction opcode and function number
-    //------------------------------------------------------------------------------------------------------//
-
-    wire intrpt_vld = intrpt & csr_mie; 
-
-    otter_cu_dcdr dcdr (
-        .instrn(imem_r_data), 
-        .intrpt_vld(intrpt_vld),
-
-        .br_eq(cond_gen_eq), 
-        .br_lt(cond_gen_lt), 
-        .br_ltu(cond_gen_ltu),
-
-        .pc_addr(pc_addr),
-        .pc_addr_inc(pc_addr_inc),
-
-        .dmem_r_data(dmem_r_data),
-
-        .alu_result(alu_result),
-
-        .rfile_r_rs1(rfile_r_rs1),
-        .rfile_r_rs2(rfile_r_rs2),
-
-        .i_type_immed(i_type_immed),
-        .s_type_immed(s_type_immed),
-        .upper_immed(upper_immed),
-        .z_immed(z_immed),
-
-        .jalr_addr(addr_gen_jalr),
-        .branch_addr(addr_gen_branch),
-        .jal_addr(addr_gen_jal),
-
-        .csr_r_data(csr_r_data),
-        .csr_mtvec_value(csr_mtvec),
-        .csr_mepc_value(csr_mepc),
-
-        .alu_func(alu_func),
-        .alu_src_a(alu_src_a),
-        .alu_src_b(alu_src_b),
-        .rfile_w_data(rfile_w_data),
-        .pc_next_addr(pc_next_addr),
-        .dmem_w_strb(dmem_w_strb),
-
-        .pc_w_en(pc_w_en),
-        .rfile_w_en(rfile_w_en),
-        .dmem_w_en(dmem_w_en),
-        .dmem_r_en(dmem_r_en),
-        .csr_w_en(csr_w_en)
-    );
-
     //----------------------------------------------------------------------//
     // Control State Registers: handles interrupt state data and triggering
     //----------------------------------------------------------------------//
 
     // CSR wires
-    wire        csr_mie, csr_w_en;
-    wire [11:0] csr_addr;
-    wire [31:0] csr_mtvec, csr_mepc, csr_w_data, csr_r_data;
+    wire [11:0] csr_addr = `INSTRN_CSR(imem_r_data);
 
-    assign csr_w_data = rfile_r_rs1;
-    assign csr_addr = `INSTRN_CSR(imem_r_data);
     otter_csr csr (
         .clk(clk),
         .rst(rst), 
-        .intrpt_taken(intrpt_taken), 
-        .w_en(csr_we),
+        .ext_intrpt(intrpt), 
+
+        .op(csr_op_sel),
+        .funct3_low(funct3[1:0]),
+        .w_en(csr_w_en),
         .addr(csr_addr),
-        .prog_count(pc_addr), 
+        .pc_addr(pc_addr), 
         .w_data(csr_w_data),
-        .csr_mie(csr_mie),
-        .csr_mepc(csr_mepc), 
-        .csr_mtvec(csr_mtvec), 
-        .r_data(csr_r_data)
+
+        .intrpt_vld(csr_intrpt_vld),
+        .read_only(csr_read_only),
+        .addr_vld(csr_addr_vld),
+        .r_data(csr_r_data),
+        .mtvec(csr_mtvec),
+        .mepc(csr_mepc)
     );
 
     //----------------------------------------------------------------------------//

@@ -42,8 +42,8 @@ module otter_soc #(
 
     wire        dmem_r_en, dmem_w_en;
     wire [3:0]  dmem_w_strb;
-    wire [31:0] imem_addr, dmem_r_data, dmem_addr, dmem_w_data;
-    reg  [31:0] imem_r_data;
+    wire [31:0] imem_addr, dmem_addr, dmem_w_data;
+    reg  [31:0] imem_r_data, dmem_r_data;
 
     otter_mcu mcu (
         .clk(clk),
@@ -65,35 +65,32 @@ module otter_soc #(
     // Memory: stores all relevant data and instructions for the program
     //-------------------------------------------------------------------//
 
-    localparam ADDR_EXP   = 14;
-    localparam ADDR_SPACE = 2**ADDR_EXP;
+    localparam WORD_ADDR_EXP   = 14;
+    localparam WORD_ADDR_SPACE = 2**WORD_ADDR_EXP;
 
-    reg [31:0] imem [0:ADDR_SPACE-1];
-    reg [31:0] dmem [0:ADDR_SPACE-1];
+    localparam BYTE_ADDR_EXP   = 2 + WORD_ADDR_EXP;
+    localparam BYTE_ADDR_SPACE = 2**BYTE_ADDR_EXP;
+
+    reg [31:0] mem [0:WORD_ADDR_SPACE-1];
 
     initial begin
-        $readmemh(DEFAULT_ROM, imem);
+        $readmemh(ROM_FILE, mem);
     end
 
-    // internal imem
-    always @(posedge clock) begin
-        imem_r_data <= imem[imem_addr[ADDR_EXP+1:2]];
-    end
-
-    // internal dmem
-    always @(posedge clock) begin
+    always @(posedge clk) begin
+        imem_r_data <= mem[imem_addr[WORD_ADDR_EXP+1:2]];
         if (dmem_r_en) begin
-            if (dmem_addr[ADDR_EXP+1:2] < ADDR_SPACE) begin
-                dmem_r_data <= dmem[dmem_addr[15:2]];
+            if (dmem_addr < BYTE_ADDR_SPACE) begin
+                dmem_r_data <= mem[dmem_addr[WORD_ADDR_EXP+1:2]];
             end else begin
                 dmem_r_data <= iobus_in;
             end
         end
-        if (dmem_w_en && dmem_addr[ADDR_EXP+1:2] < ADDR_SPACE) begin
-            if (dmem_w_strb[0]) dmem[dmem_addr[ADDR_EXP+1:2]][ 7: 0] <= dmem_w_data[ 7: 0];
-            if (dmem_w_strb[1]) dmem[dmem_addr[ADDR_EXP+1:2]][15: 8] <= dmem_w_data[15: 8];
-            if (dmem_w_strb[2]) dmem[dmem_addr[ADDR_EXP+1:2]][23:16] <= dmem_w_data[23:16];
-            if (dmem_w_strb[3]) dmem[dmem_addr[ADDR_EXP+1:2]][31:24] <= dmem_w_data[31:24];
+        if (dmem_w_en && dmem_addr < BYTE_ADDR_SPACE) begin
+            if (dmem_w_strb[0]) mem[dmem_addr[WORD_ADDR_EXP+1:2]][ 7: 0] <= dmem_w_data[ 7: 0];
+            if (dmem_w_strb[1]) mem[dmem_addr[WORD_ADDR_EXP+1:2]][15: 8] <= dmem_w_data[15: 8];
+            if (dmem_w_strb[2]) mem[dmem_addr[WORD_ADDR_EXP+1:2]][23:16] <= dmem_w_data[23:16];
+            if (dmem_w_strb[3]) mem[dmem_addr[WORD_ADDR_EXP+1:2]][31:24] <= dmem_w_data[31:24];
         end
     end
 
@@ -105,7 +102,7 @@ module otter_soc #(
         iobus_out[31:24] = dmem_w_strb[3] ? dmem_w_data[31:24] : 0;
 
         iobus_addr = dmem_addr;
-        iobus_wr   = dmem_addr[ADDR_EXP+1:2] < ADDR_SPACE ? dmem_w_en : 0;
+        iobus_wr   = dmem_addr < BYTE_ADDR_SPACE ? 0 : dmem_w_en;
     end
 
 endmodule
