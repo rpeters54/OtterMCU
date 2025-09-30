@@ -36,28 +36,42 @@ module otter_csr (
     output reg        read_only,
     output reg        addr_vld,
     output reg [31:0] r_data,
-    output reg [31:0] mtvec,
-    output reg [31:0] mepc
-);
 
     // trap related registers, WARL (Accepts any write, only reads legal result)
-    reg [31:0] mstatus, misa, mie, mstatush, mscratch, mcause, mtval, mip;
+    output reg [31:0] mstatus,
+    output reg [31:0] misa,
+    output reg [31:0] mie,
+    output reg [31:0] mtvec,
+    output reg [31:0] mstatush,
+    output reg [31:0] mscratch,
+    output reg [31:0] mepc,
+    output reg [31:0] mcause,
+    output reg [31:0] mtval,
+    output reg [31:0] mip,
+
+    // read-only csrs, will flag write attempts as illegal
+    output     [31:0] mvendorid,
+    output     [31:0] marchid,
+    output     [31:0] mimpid,
+    output     [31:0] mhartid,
+    output     [31:0] mconfigptr
+);
 
     // temporary registers
     reg [31:0] result;
 
-    // read-only csrs, will flag write attempts as illegal
-    wire [31:0] mvendorid  = CSR_MVENDORID_VALUE;
-    wire [31:0] marchid    = CSR_MARCHID_VALUE;
-    wire [31:0] mimpid     = CSR_MIMPID_VALUE;
-    wire [31:0] mhartid    = CSR_MHARTID_VALUE;
-    wire [31:0] mconfigptr = CSR_MCONFIGPTR_VALUE;
+    // read-only csr values
+    assign mvendorid  = CSR_MVENDORID_VALUE;
+    assign marchid    = CSR_MARCHID_VALUE;
+    assign mimpid     = CSR_MIMPID_VALUE;
+    assign mhartid    = CSR_MHARTID_VALUE;
+    assign mconfigptr = CSR_MCONFIGPTR_VALUE;
 
     always @(posedge clk) begin
         //reset all writable registers to zero
         if (rst) begin
             mstatus  <= '0; 
-            misa     <= 32'h40000100;
+            misa     <= 32'h40000100; // RV32I + Zicsr
             mie      <= '0;
             mtvec    <= '0; 
             mstatush <= '0; 

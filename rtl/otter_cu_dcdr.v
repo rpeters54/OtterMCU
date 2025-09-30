@@ -44,7 +44,13 @@ module otter_cu_dcdr (
     input      [1:0] addr_branch_alignment,
     input      [1:0] addr_jal_alignment,
 
-    // stateless outputs (dependent on decoded inst)
+`ifdef RISCV_FORMAL
+    output reg       intrpt_taken,
+    output reg       trap_taken,
+    output     [1:0] state,
+`endif
+
+    // selectors
     output reg [3:0] alu_func,
     output reg       alu_src_sel_a,
     output reg [1:0] alu_src_sel_b,
@@ -53,13 +59,14 @@ module otter_cu_dcdr (
     output reg [2:0] csr_op_sel,
     output reg [3:0] dmem_w_strb,
 
-    // stateful outputs (dependent on fsm)
+    // enablers
     output reg        pc_w_en, 
     output reg        rfile_w_en,
     output reg        dmem_w_en,
     output reg        dmem_r_en,
     output reg        csr_w_en,
-    output reg        stall
+    output reg        stall,
+    output reg        reset
 );
 
     reg illegal_instrn, write_attempt;
@@ -73,7 +80,7 @@ module otter_cu_dcdr (
     wire [6:0] opcode   = `INSTRN_OPCODE(instrn);
 
     // state variables and initial values
-    reg [2:0] present_state, next_state;
+    reg [1:0] present_state, next_state;
     initial begin
         present_state = ST_INIT;
 	    next_state    = ST_INIT;
@@ -88,9 +95,16 @@ module otter_cu_dcdr (
         end
     end
 
+`ifdef RISCV_FORMAL
+    assign state = present_state;
+`endif
 
     always @(*) begin
 
+`ifdef RISCV_FORMAL
+        intrpt_taken = '0;
+        trap_taken   = '0;
+`endif
         // stateless defaults
         alu_func        = ALU_ADD; 
         alu_src_sel_a   = ALU_SRC_SEL_A_RS1; 
@@ -98,6 +112,7 @@ module otter_cu_dcdr (
         rfile_w_sel     = RFILE_W_SEL_PC_ADDR_INC; 
         pc_src_sel      = PC_SRC_SEL_ADDR_INC; 
         csr_op_sel      = CSR_OP_WRITE;
+        dmem_w_strb     = '0;
         illegal_instrn  = '0;
 
         // stateful defaults
@@ -107,6 +122,7 @@ module otter_cu_dcdr (
         dmem_r_en    = '0; 
         csr_w_en     = '0; 
         stall        = '0;
+        reset        = '0;
 
         case (present_state)
             ST_INIT : begin
@@ -180,16 +196,16 @@ module otter_cu_dcdr (
                         alu_src_sel_b = ALU_SRC_SEL_B_I_TYPE_IMM;
                         alu_func      = ALU_ADD;
 
-                        // Note: alu_result is the computed address
                         casez ({funct3, addr_load_alignment})
                             {FUNCT3_I_LB,  2'bzz},
                             {FUNCT3_I_LH,  2'bz0}, 
                             {FUNCT3_I_LW,  2'b00},
                             {FUNCT3_I_LBU, 2'bzz}, 
                             {FUNCT3_I_LHU, 2'bz0} : begin
-
                                 dmem_r_en  = '1;
                                 pc_w_en    = '0;
+                                // loads require a write back stall because of
+                                // single-cycle memory read delay
                                 stall      = '1; 
                                 next_state = ST_WR_BK;
                             end
@@ -203,7 +219,6 @@ module otter_cu_dcdr (
                         alu_src_sel_b = ALU_SRC_SEL_B_S_TYPE_IMM;
                         alu_func      = ALU_ADD;
 
-                        // Note: alu_result is the computed address
                         casez ({funct3, addr_store_alignment})
                             {FUNCT3_S_SB, 2'bzz},
                             {FUNCT3_S_SH, 2'bz0},
@@ -345,18 +360,28 @@ module otter_cu_dcdr (
                     end
                 endcase
 
-                // trap case
-                if (illegal_instrn) begin
-                    pc_src_sel = PC_SRC_SEL_MTVEC;
-                    csr_op_sel = CSR_OP_TRAP;
+                // reset case
+                if (rst) begin
+                    reset = '1;
+
                 // interrupt case
                 end else if (csr_intrpt_vld) begin
                     pc_src_sel = PC_SRC_SEL_MTVEC;
                     csr_op_sel = CSR_OP_INTRPT;
-                end 
+`ifdef RISCV_FORMAL
+                    intrpt_taken   = '1;
+`endif
+                // trap case
+                end else if (illegal_instrn) begin
+                    pc_src_sel = PC_SRC_SEL_MTVEC;
+                    csr_op_sel = CSR_OP_TRAP;
+`ifdef RISCV_FORMAL
+                    trap_taken   = '1;
+`endif
+                end
 
-                // Avoid writing back if interrupt/trap occurs
-                if (csr_intrpt_vld || illegal_instrn) begin
+                // Avoid writing back if reset/interrupt/trap occurs
+                if (rst || csr_intrpt_vld || illegal_instrn) begin
                     pc_w_en      = '1; 
                     rfile_w_en   = '0; 
                     dmem_w_en    = '0; 
@@ -388,6 +413,14 @@ module otter_cu_dcdr (
     reg  f_past_rst;
     reg [31:0] f_prev_instrn;
 
+    wire branch_taken = (funct3 == FUNCT3_B_BEQ  &&  br_eq)  ||
+        (funct3 == FUNCT3_B_BNE  && !br_eq)  ||
+        (funct3 == FUNCT3_B_BLT  &&  br_lt)  ||
+        (funct3 == FUNCT3_B_BGE  && !br_lt)  ||
+        (funct3 == FUNCT3_B_BLTU &&  br_ltu) ||
+        (funct3 == FUNCT3_B_BGEU && !br_ltu);
+
+
     initial begin
         f_past_valid = 0;
         f_past_rst = 0;
@@ -411,9 +444,9 @@ module otter_cu_dcdr (
         // Property: On reset, the FSM must be in the INIT state.
         if (f_past_rst) assert(present_state == ST_INIT);
 
-        // Property: A trap must take priority over an interrupt.
-        if (present_state == ST_EXEC && illegal_instrn)
-            assert(csr_op_sel != CSR_OP_INTRPT);
+        // Property: A interrupt must take priority over a trap
+        if (present_state == ST_EXEC && csr_intrpt_vld && illegal_instrn)
+            assert(csr_op_sel == CSR_OP_INTRPT);
 
         // Property: When any trap or interrupt is taken, architectural state writes must be disabled.
         if (present_state == ST_EXEC && f_exception_taken)
@@ -463,9 +496,12 @@ module otter_cu_dcdr (
                    csr_w_en      == '0 &&
                    stall         == '0);
 
-        // Property: For any valid LOAD instruction (first cycle).
+        // LOAD instruction (first cycle)
         if (present_state == ST_EXEC && opcode == OPCODE_LOAD && !f_exception_taken)
-            assert(next_state == ST_WR_BK &&
+            assert(alu_src_sel_a == ALU_SRC_SEL_A_RS1 && 
+                   alu_src_sel_b == ALU_SRC_SEL_B_I_TYPE_IMM &&
+                   alu_func      == ALU_ADD &&
+                   next_state    == ST_WR_BK &&
                    pc_w_en       == '0 &&
                    rfile_w_en    == '0 &&
                    dmem_w_en     == '0 &&
@@ -473,6 +509,7 @@ module otter_cu_dcdr (
                    csr_w_en      == '0 &&
                    stall         == '1);
 
+        // LOAD instruction (write back)
         if (present_state == ST_WR_BK)
             assert(next_state    == ST_EXEC &&
                    pc_w_en       == '1 &&
@@ -482,7 +519,7 @@ module otter_cu_dcdr (
                    csr_w_en      == '0 &&
                    stall         == '0);
 
-        // Property: For any valid STORE instruction.
+        // STORE instruction
         if (present_state == ST_EXEC && opcode == OPCODE_STORE && !f_exception_taken)
             assert(pc_w_en       == '1 &&
                    rfile_w_en    == '0 &&
@@ -491,9 +528,41 @@ module otter_cu_dcdr (
                    csr_w_en      == '0 &&
                    stall         == '0);
 
-        // Property: For a JAL instruction.
+        // Branch instruction
+       if (present_state == ST_EXEC && opcode == OPCODE_BRANCH && !f_exception_taken) begin
+            if (branch_taken) begin
+                assert(addr_branch_alignment == '0 &&
+                       pc_src_sel == PC_SRC_SEL_BRANCH);
+            end else begin
+                assert(pc_src_sel == PC_SRC_SEL_ADDR_INC);
+            end
+       end
+
+        // Load Upper Immediate instruction
+        if (present_state == ST_EXEC && opcode == OPCODE_LUI && !f_exception_taken)
+            assert(alu_src_sel_a == ALU_SRC_SEL_A_UPPER_IMM &&
+                   rfile_w_sel   == RFILE_W_SEL_ALU_RESULT &&
+                   alu_func      == ALU_LUI &&
+                   rfile_w_en    == '1);
+
+        // Add Upper Immediate to PC instruction
+        if (present_state == ST_EXEC && opcode == OPCODE_AUIPC && !f_exception_taken)
+            assert(alu_src_sel_a == ALU_SRC_SEL_A_UPPER_IMM &&
+                   alu_src_sel_b == ALU_SRC_SEL_B_PC_ADDR &&
+                   rfile_w_sel   == RFILE_W_SEL_ALU_RESULT &&
+                   alu_func      == ALU_ADD &&
+                   rfile_w_en    == '1);
+
+        // JAL instruction.
         if (present_state == ST_EXEC && opcode == OPCODE_JAL && !f_exception_taken)
-            assert(pc_src_sel == PC_SRC_SEL_JAL && rfile_w_en == 1'b1 && rfile_w_sel == RFILE_W_SEL_PC_ADDR_INC);
+            assert(pc_src_sel == PC_SRC_SEL_JAL && 
+                   rfile_w_en == '1 && 
+                   rfile_w_sel == RFILE_W_SEL_PC_ADDR_INC);
+
+        // Fence is valid
+        if (present_state == ST_EXEC && (instrn == {PREFIX_FENCE, OPCODE_FENCE} || instrn == {PREFIX_FENCE_I, OPCODE_FENCE})) begin
+            assert(!illegal_instrn);
+        end
 
         // Property: For an ECALL instruction.
         if (present_state == ST_EXEC && instrn == 32'h00000073 && !f_exception_taken) // Full ECALL encoding
@@ -502,12 +571,14 @@ module otter_cu_dcdr (
 
     // --- Coverage Checks ---
     always @(posedge clk) begin
-        cover(present_state == ST_EXEC && opcode == OPCODE_OP_REG && !f_exception_taken);
-        cover(present_state == ST_EXEC && opcode == OPCODE_LOAD && !f_exception_taken);
-        cover(present_state == ST_EXEC && opcode == OPCODE_STORE && !f_exception_taken);
-        cover(present_state == ST_EXEC && opcode == OPCODE_JAL && !f_exception_taken);
-        cover(present_state == ST_EXEC && illegal_instrn);
-        cover(present_state == ST_EXEC && !illegal_instrn && csr_intrpt_vld);
+        if (!rst) begin
+            cover(present_state == ST_EXEC && opcode == OPCODE_OP_REG && !f_exception_taken);
+            cover(present_state == ST_EXEC && opcode == OPCODE_LOAD && !f_exception_taken);
+            cover(present_state == ST_EXEC && opcode == OPCODE_STORE && !f_exception_taken);
+            cover(present_state == ST_EXEC && opcode == OPCODE_JAL && !f_exception_taken);
+            cover(present_state == ST_EXEC && illegal_instrn);
+            cover(present_state == ST_EXEC && !illegal_instrn && csr_intrpt_vld);
+        end
     end
 `endif
 

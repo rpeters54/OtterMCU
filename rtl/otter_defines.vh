@@ -160,7 +160,7 @@
     // everything is left as default
     localparam CSR_MSTATUSH_MASK = 32'h0000_0000;
 
-    // XLEN = 32, no extensions
+    // misa is read-only in this implementation
     localparam CSR_MISA_MASK     = 32'h0000_0000;
 
     // bit 11 = External IRQ, bit 7 = Timer IRQ, bit 3 = Software IRQ
@@ -204,7 +204,6 @@
     localparam CSR_FUNCT3_LOW_RW = 2'b01;
     localparam CSR_FUNCT3_LOW_RS = 2'b10;
     localparam CSR_FUNCT3_LOW_RC = 2'b11;
-
     localparam CSR_FUNCT3_HIGH_REG = 1'b0;
     localparam CSR_FUNCT3_HIGH_IMM = 1'b1;
 
@@ -229,8 +228,6 @@
     // PC Defines
     //--------------//
 
-    `define PC_MEM_ADDR1(pc)    (pc[15:2])
-
     localparam PC_SRC_SEL_ADDR_INC = 3'd0;
     localparam PC_SRC_SEL_JALR     = 3'd1;
     localparam PC_SRC_SEL_BRANCH   = 3'd2;
@@ -242,24 +239,48 @@
     // FSM Defines
     //--------------//
 
-    localparam ST_INIT   = 3'd0;
-    localparam ST_EXEC   = 3'd1;
-    localparam ST_WR_BK  = 3'd2;
+    localparam ST_INIT   = 2'd0;
+    localparam ST_EXEC   = 2'd1;
+    localparam ST_WR_BK  = 2'd2;
 
     //--------------//
     // RVFI Defines
     //--------------//
 
-    `define RFVI_CSR_TRACE(NAME)                   \
+    `define RVFI_CSR_LIST \
+        X(mstatus)    \
+        X(misa)       \
+        X(mie)        \
+        X(mtvec)      \
+        X(mstatush)   \
+        X(mscratch)   \
+        X(mepc)       \
+        X(mcause)     \
+        X(mtval)      \
+        X(mip)        \
+        X(mvendorid)  \
+        X(marchid)    \
+        X(mimpid)     \
+        X(mhartid)    \
+        X(mconfigptr)
+
+    // Port declarations
+    `define X(NAME) \
         output reg [31:0] rvfi_csr_``NAME``_rmask, \
         output reg [31:0] rvfi_csr_``NAME``_wmask, \
         output reg [31:0] rvfi_csr_``NAME``_rdata, \
         output reg [31:0] rvfi_csr_``NAME``_wdata,
+    `define RVFI_CSR_PORTS `RVFI_CSR_LIST
+    `undef X
 
-    `define RFVI_CSRS_TRACES  \
-        `RFVI_CSR_TRACE(mie)  \
-        `RFVI_CSR_TRACE(mepc) \
-        `RFVI_CSR_TRACE(mtvec)
+    // Assignments
+    `define X(NAME) \
+        rvfi_csr_``NAME``_rmask <= 32'hffff_ffff; \
+        rvfi_csr_``NAME``_wmask <= 32'hffff_ffff; \
+        rvfi_csr_``NAME``_rdata <= csr_``NAME``; \
+        rvfi_csr_``NAME``_wdata <= csr_``NAME``;
+    `define RVFI_CSR_ASSIGNMENTS `RVFI_CSR_LIST
+    `undef X
 
     `define RVFI_OUTPUTS                  \
         output reg        rvfi_valid,     \
@@ -283,6 +304,6 @@
         output reg [ 3:0] rvfi_mem_wmask, \
         output reg [31:0] rvfi_mem_rdata, \
         output reg [31:0] rvfi_mem_wdata, \
-        `RFVI_CSRS_TRACES
+        `RFVI_CSR_PORTS
 
 `endif
