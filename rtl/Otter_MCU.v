@@ -74,7 +74,7 @@ module otter_mcu #(
     wire [1:0] rfile_w_sel;
     wire [2:0] pc_src_sel;
     wire [2:0] csr_op_sel;
-    wire [2:0] csr_mcause_sel;
+    wire [2:0] csr_trap_cause_sel;
     wire [3:0] dmem_w_base_strb;
 
     wire [31:0] i_type_immed, s_type_immed;
@@ -124,7 +124,7 @@ module otter_mcu #(
         .rfile_w_sel(rfile_w_sel),
         .pc_src_sel(pc_src_sel),
         .csr_op_sel(csr_op_sel),
-        .csr_mcause_sel(csr_mcause_sel),
+        .csr_trap_cause_sel(csr_trap_cause_sel),
         .dmem_w_base_strb(dmem_w_base_strb),
 
         .pc_w_en(pc_w_en),
@@ -222,18 +222,25 @@ module otter_mcu #(
     end
     // On trap for attempted misaligned imem/dmem access, set mtval accordingly 
     always @(*) begin
-        case (csr_mcause_sel)
-            MCAUSE_SEL_INSTRN_ADDR_MISALIGN : begin
-                case (opcode)
-                    OPCODE_JAL    :  csr_mtval_trap_addr = addr_gen_jal;
-                    OPCODE_JALR   :  csr_mtval_trap_addr = addr_gen_jalr;
-                    OPCODE_BRANCH :  csr_mtval_trap_addr = addr_gen_branch;
-                    default       :  csr_mtval_trap_addr = '0;
+        csr_mtval_trap_addr = '0;
+        case (csr_op_sel)
+            CSR_OP_EBREAK : csr_mtval_trap_addr = pc_addr;
+            CSR_OP_TRAP : begin
+                case (csr_trap_cause_sel)
+                    TRAP_CAUSE_SEL_INSTRN_ADDR_MISALIGN : begin
+                        case (opcode)
+                            OPCODE_JAL    : csr_mtval_trap_addr = addr_gen_jal;
+                            OPCODE_JALR   : csr_mtval_trap_addr = addr_gen_jalr;
+                            OPCODE_BRANCH : csr_mtval_trap_addr = addr_gen_branch;
+                            default       : ;
+                        endcase
+                    end
+                    TRAP_CAUSE_SEL_LOAD_ADDR_MISALIGN  : csr_mtval_trap_addr = alu_result;
+                    TRAP_CAUSE_SEL_STORE_ADDR_MISALIGN : csr_mtval_trap_addr = alu_result;
+                    default                            : ;
                 endcase
             end
-            MCAUSE_SEL_LOAD_ADDR_MISALIGN   : csr_mtval_trap_addr = alu_result;
-            MCAUSE_SEL_STORE_ADDR_MISALIGN  : csr_mtval_trap_addr = alu_result;
-            default                         : csr_mtval_trap_addr = '0;
+            default : ;
         endcase
     end
 
@@ -337,7 +344,7 @@ module otter_mcu #(
         .intrpt(intrpt), 
 
         .op_sel(csr_op_sel),
-        .mcause_sel(csr_mcause_sel),
+        .trap_cause_sel(csr_trap_cause_sel),
         .funct3_low(funct3[1:0]),
         .w_en(csr_w_en),
         .addr(csr_addr),

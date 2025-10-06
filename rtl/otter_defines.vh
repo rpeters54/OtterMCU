@@ -146,14 +146,14 @@
 	localparam CSR_MCYCLEH_ADDR   = 12'hB80;
 	localparam CSR_MINSTRETH_ADDR = 12'hB82;
 
+    // Selector for trap causes used for selecting MCAUSE
+    localparam TRAP_CAUSE_SEL_NO_TRAP              = 3'd0;
+    localparam TRAP_CAUSE_SEL_INSTRN_ADDR_MISALIGN = 3'd1;
+    localparam TRAP_CAUSE_SEL_INVLD_INSTRN         = 3'd2;
+    localparam TRAP_CAUSE_SEL_LOAD_ADDR_MISALIGN   = 3'd3;
+    localparam TRAP_CAUSE_SEL_STORE_ADDR_MISALIGN  = 3'd4;
 
     // MCAUSE Codes
-    localparam MCAUSE_SEL_NOP                  = 3'd0;
-    localparam MCAUSE_SEL_INSTRN_ADDR_MISALIGN = 3'd1;
-    localparam MCAUSE_SEL_INVLD_INSTRN         = 3'd2;
-    localparam MCAUSE_SEL_LOAD_ADDR_MISALIGN   = 3'd3;
-    localparam MCAUSE_SEL_STORE_ADDR_MISALIGN  = 3'd4;
-
     localparam MCAUSE_CODE_INSTRN_ADDR_MISALIGN = 32'h00000000;
     localparam MCAUSE_CODE_INVLD_INSTRN         = 32'h00000002;
     localparam MCAUSE_CODE_BREAKPOINT           = 32'h00000003;

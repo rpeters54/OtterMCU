@@ -2,7 +2,7 @@ OUTPUT_ARCH( "riscv" )
 ENTRY(rvtest_entry_point)
 SECTIONS
 {
-  . = 0x00000000;
+  . = 0x80000000;
   .boot_constants : { *(.boot_constants) }
   . = ALIGN(0x1000);
   .text.init : { *(.text.init) }

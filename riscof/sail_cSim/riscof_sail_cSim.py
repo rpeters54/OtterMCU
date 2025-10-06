@@ -92,13 +92,14 @@ class sail_cSim(pluginTemplate):
         make = utils.makeUtil(makefilePath=os.path.join(self.work_dir, "Makefile." + self.name[:-1]))
         make.makeCommand = f"{self.make} -j {self.num_jobs}"
 
-        for file in testList:
+        logging.info(f"Adding Targets:")
+        for idx, file in enumerate(testList):
             testentry = testList[file]
             test_path = testentry['test_path']
             test_dir = testentry['work_dir']
-            test_name = test_path.rsplit('/',1)[1][:-2]
+            test_name = os.path.basename(test_path)
 
-            echo_cmd = f"echo \"Running Test: {os.path.basename(test_path)}\""
+            echo_cmd = f"echo \"Running Test: {test_name}\""
             cd_cmd = f"cd {test_dir}"
 
             # substitute all variables in the compile command that we created in the initialize function
@@ -126,6 +127,7 @@ class sail_cSim(pluginTemplate):
 
             # concatenate all commands that need to be executed within a make-target.
             final_cmd = f"@{cd_cmd}; {echo_cmd}; {compile_cmd}; {objdump_cmd}; {sim_cmd}; {coverage_cmd}"
+            logging.info(f"  [{idx:3}/{len(testList):3}] - {test_name}")
             make.add_target(final_cmd)
 
         # execute all targets

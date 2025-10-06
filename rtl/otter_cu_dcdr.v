@@ -57,7 +57,7 @@ module otter_cu_dcdr (
     output reg [1:0] rfile_w_sel,
     output reg [2:0] pc_src_sel,
     output reg [2:0] csr_op_sel,
-    output reg [2:0] csr_mcause_sel,
+    output reg [2:0] csr_trap_cause_sel,
     output reg [3:0] dmem_w_base_strb,
 
     // enablers
@@ -110,7 +110,7 @@ module otter_cu_dcdr (
         alu_src_sel_b    = ALU_SRC_SEL_B_RS2;
         rfile_w_sel      = RFILE_W_SEL_PC_ADDR_INC; 
         pc_src_sel       = PC_SRC_SEL_ADDR_INC; 
-        csr_mcause_sel   = MCAUSE_SEL_NOP; 
+        csr_trap_cause_sel   = TRAP_CAUSE_SEL_NO_TRAP; 
         csr_op_sel       = CSR_OP_WRITE;
         dmem_w_base_strb = '0;
 
@@ -153,7 +153,7 @@ module otter_cu_dcdr (
                                 rfile_w_en = '1;
                             end
                             default begin 
-                                csr_mcause_sel = MCAUSE_SEL_INVLD_INSTRN;
+                                csr_trap_cause_sel = TRAP_CAUSE_SEL_INVLD_INSTRN;
                             end
                         endcase
                     end
@@ -176,7 +176,7 @@ module otter_cu_dcdr (
                                 rfile_w_en = '1;
                             end
                             default begin 
-                                csr_mcause_sel = MCAUSE_SEL_INVLD_INSTRN;
+                                csr_trap_cause_sel = TRAP_CAUSE_SEL_INVLD_INSTRN;
                             end
                         endcase
                     end
@@ -187,7 +187,7 @@ module otter_cu_dcdr (
 
                             rfile_w_en = '1;
                         end else begin
-                            csr_mcause_sel = MCAUSE_SEL_INSTRN_ADDR_MISALIGN;
+                            csr_trap_cause_sel = TRAP_CAUSE_SEL_INSTRN_ADDR_MISALIGN;
                         end
                     end
                     OPCODE_LOAD : begin      // I-Type opcode *load instructions
@@ -214,10 +214,10 @@ module otter_cu_dcdr (
                                 case(funct3)
                                     FUNCT3_I_LB, FUNCT3_I_LH, FUNCT3_I_LW,
                                     FUNCT3_I_LBU, FUNCT3_I_LHU : begin
-                                        csr_mcause_sel = MCAUSE_SEL_LOAD_ADDR_MISALIGN;
+                                        csr_trap_cause_sel = TRAP_CAUSE_SEL_LOAD_ADDR_MISALIGN;
                                     end
                                     default : begin
-                                        csr_mcause_sel = MCAUSE_SEL_INVLD_INSTRN;
+                                        csr_trap_cause_sel = TRAP_CAUSE_SEL_INVLD_INSTRN;
                                     end
                                 endcase
                             end
@@ -247,10 +247,10 @@ module otter_cu_dcdr (
                                 // invalid instructions and addr misalign
                                 case(funct3)
                                     FUNCT3_S_SB, FUNCT3_S_SH, FUNCT3_S_SW : begin
-                                        csr_mcause_sel = MCAUSE_SEL_STORE_ADDR_MISALIGN;
+                                        csr_trap_cause_sel = TRAP_CAUSE_SEL_STORE_ADDR_MISALIGN;
                                     end
                                     default : begin
-                                        csr_mcause_sel = MCAUSE_SEL_INVLD_INSTRN;
+                                        csr_trap_cause_sel = TRAP_CAUSE_SEL_INVLD_INSTRN;
                                     end
                                 endcase
                             end
@@ -273,12 +273,12 @@ module otter_cu_dcdr (
                                     if (addr_branch_alignment  == 2'b00) begin
                                         pc_src_sel = PC_SRC_SEL_BRANCH;
                                     end else begin
-                                        csr_mcause_sel = MCAUSE_SEL_INSTRN_ADDR_MISALIGN;
+                                        csr_trap_cause_sel = TRAP_CAUSE_SEL_INSTRN_ADDR_MISALIGN;
                                     end
                                 end
                             end
                             default begin
-                                csr_mcause_sel = MCAUSE_SEL_INVLD_INSTRN;
+                                csr_trap_cause_sel = TRAP_CAUSE_SEL_INVLD_INSTRN;
                             end
                         endcase
                     end
@@ -304,7 +304,7 @@ module otter_cu_dcdr (
 
                             rfile_w_en = '1;
                         end else begin
-                            csr_mcause_sel = MCAUSE_SEL_INSTRN_ADDR_MISALIGN;
+                            csr_trap_cause_sel = TRAP_CAUSE_SEL_INSTRN_ADDR_MISALIGN;
                         end
                     end
                     OPCODE_FENCE : begin
@@ -314,7 +314,7 @@ module otter_cu_dcdr (
                                 // nop
                             end
                             default : begin
-                                csr_mcause_sel = MCAUSE_SEL_INVLD_INSTRN;
+                                csr_trap_cause_sel = TRAP_CAUSE_SEL_INVLD_INSTRN;
                             end
                         endcase
                     end
@@ -334,7 +334,7 @@ module otter_cu_dcdr (
 
                                 // illegal if csr dne or write to read-only
                                 if (!csr_addr_vld || (write_attempt && csr_read_only)) begin
-                                    csr_mcause_sel = MCAUSE_SEL_INVLD_INSTRN;
+                                    csr_trap_cause_sel = TRAP_CAUSE_SEL_INVLD_INSTRN;
                                 end else begin
                                     rfile_w_sel = RFILE_W_SEL_CSR_R_DATA;
                                     rfile_w_en  = 1'b1;
@@ -362,17 +362,17 @@ module otter_cu_dcdr (
                                         csr_op_sel = CSR_OP_WFI;
                                     end
                                     default begin
-                                        csr_mcause_sel = MCAUSE_SEL_INVLD_INSTRN;
+                                        csr_trap_cause_sel = TRAP_CAUSE_SEL_INVLD_INSTRN;
                                     end
                                 endcase
                             end
                             default : begin 
-                                csr_mcause_sel = MCAUSE_SEL_INVLD_INSTRN;
+                                csr_trap_cause_sel = TRAP_CAUSE_SEL_INVLD_INSTRN;
                             end
                         endcase
                     end
                     default : begin 
-                        csr_mcause_sel = MCAUSE_SEL_INVLD_INSTRN;
+                        csr_trap_cause_sel = TRAP_CAUSE_SEL_INVLD_INSTRN;
                     end
                 endcase
 
@@ -384,7 +384,7 @@ module otter_cu_dcdr (
                     intrpt_taken   = '1;
 `endif
                 // trap case
-                end else if (|csr_mcause_sel) begin
+                end else if (|csr_trap_cause_sel) begin
                     pc_src_sel = PC_SRC_SEL_MTVEC;
                     csr_op_sel = CSR_OP_TRAP;
 `ifdef RISCV_FORMAL
@@ -393,7 +393,7 @@ module otter_cu_dcdr (
                 end
 
                 // Avoid writing back if interrupt/trap occurs
-                if (csr_intrpt_vld || |csr_mcause_sel) begin
+                if (csr_intrpt_vld || |csr_trap_cause_sel) begin
                     pc_w_en      = '1; 
                     rfile_w_en   = '0; 
                     dmem_w_en    = '0; 
@@ -436,7 +436,7 @@ module otter_cu_dcdr (
 
 `ifdef FORMAL
 
-    assign illegal_instrn = |csr_mcause_sel;
+    assign illegal_instrn = |csr_trap_cause_sel;
 
     // Helper signals for formal properties
     wire f_preempted = rst || illegal_instrn || csr_intrpt_vld;

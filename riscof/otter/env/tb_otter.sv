@@ -6,10 +6,10 @@ module tb_otter;
     parameter MEM_EXP       = 28;
     parameter MEM_SIZE      = 2**MEM_EXP;
 
-    parameter RESET_VEC     = 32'h00001000;
-    parameter TOHOST_PTR    = 32'h00000000;
-    parameter SIG_START_PTR = 32'h00000004;
-    parameter SIG_END_PTR   = 32'h00000008;
+    parameter RESET_VEC     = 32'h80001000;
+    parameter TOHOST_PTR    = 32'h80000000;
+    parameter SIG_START_PTR = 32'h80000004;
+    parameter SIG_END_PTR   = 32'h80000008;
 
     reg clk = 0;
     reg rst = 1;
@@ -218,6 +218,7 @@ module tb_otter;
 
     // -- Memory Interface Logic --
 
+    integer sig_start_idx, sig_end_idx;
     always @(posedge clk) begin
 
         // Synchronous reads from prog_mem, 
@@ -240,11 +241,24 @@ module tb_otter;
                 $display("INFO: Test finished (tohost = 0x%08h)", dmem_w_data);
                 $display("INFO: Writing signature to %s", sig_file);
                 // Dump signature region from fixed location at end of address space
+
+                sig_start_idx = (sig_start_addr >> 2) & ((MEM_SIZE/4) - 1);
+                sig_end_idx   = ((sig_end_addr  >> 2) & ((MEM_SIZE/4) - 1)) - 1;
+
+                if (sig_end_idx < sig_start_idx ||
+                    sig_start_idx < 0 ||
+                    sig_end_idx >= (MEM_SIZE/4)) begin
+                  $fatal(1, "Bad signature range: start=%0d end=%0d (mem words=%0d)",
+                         sig_start_idx, sig_end_idx, MEM_SIZE/4);
+                end
+
+                $display("INFO: Dumping signature words [%0d .. %0d]", sig_start_idx, sig_end_idx);
+
                 $writememh(
                     sig_file,
                     prog_mem,
-                    sig_start_addr[MEM_EXP-1:2],
-                    sig_end_addr[MEM_EXP-1:2] - 1
+                    sig_start_idx,
+                    sig_end_idx
                 );
                 $finish;
             end

@@ -25,7 +25,7 @@ module otter_csr (
     input      [31:0] intrpt,
 
     input      [2:0]  op_sel,
-    input      [2:0]  mcause_sel,
+    input      [2:0]  trap_cause_sel,
     input      [1:0]  funct3_low,
     input             w_en,
     input      [11:0] addr,
@@ -129,7 +129,7 @@ module otter_csr (
                         CSR_MCAUSE_ADDR   : mcause   <= result & CSR_MCAUSE_MASK; 
                         CSR_MTVAL_ADDR    : mtval    <= result & CSR_MTVAL_MASK; 
                         CSR_MIP_ADDR      : mip      <= (result & CSR_MIP_MASK) | (mip & ~CSR_MIP_MASK);
-                        default           : begin end
+                        default           : ;
                     endcase
                 end
             end
@@ -144,7 +144,7 @@ module otter_csr (
                 mcause     <= MCAUSE_CODE_BREAKPOINT;
                 mstatus[7] <= mstatus[3];
                 mstatus[3] <= '0;
-                // mtval      <= mtval_trap_addr;
+                mtval      <= mtval_trap_addr;
             end
             CSR_OP_MRET : begin
                 mcause     <= '0;
@@ -162,12 +162,12 @@ module otter_csr (
                 mstatus[7] <= mstatus[3];
                 mstatus[3] <= '0;
                 mtval      <= mtval_trap_addr;
-                case (mcause_sel)
-                    MCAUSE_SEL_INSTRN_ADDR_MISALIGN : mcause <= MCAUSE_CODE_INSTRN_ADDR_MISALIGN;
-                    MCAUSE_SEL_INVLD_INSTRN         : mcause <= MCAUSE_CODE_INVLD_INSTRN;
-                    MCAUSE_SEL_LOAD_ADDR_MISALIGN   : mcause <= MCAUSE_CODE_LOAD_ADDR_MISALIGN;
-                    MCAUSE_SEL_STORE_ADDR_MISALIGN  : mcause <= MCAUSE_CODE_STORE_ADDR_MISALIGN;
-                    default                         : mcause <= '0;
+                case (trap_cause_sel)
+                    TRAP_CAUSE_SEL_INSTRN_ADDR_MISALIGN : mcause <= MCAUSE_CODE_INSTRN_ADDR_MISALIGN;
+                    TRAP_CAUSE_SEL_INVLD_INSTRN         : mcause <= MCAUSE_CODE_INVLD_INSTRN;
+                    TRAP_CAUSE_SEL_LOAD_ADDR_MISALIGN   : mcause <= MCAUSE_CODE_LOAD_ADDR_MISALIGN;
+                    TRAP_CAUSE_SEL_STORE_ADDR_MISALIGN  : mcause <= MCAUSE_CODE_STORE_ADDR_MISALIGN;
+                    default                             : ;
                 endcase
             end
             CSR_OP_WFI : ; // nop

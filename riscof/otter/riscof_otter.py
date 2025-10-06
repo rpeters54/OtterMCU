@@ -61,7 +61,7 @@ class otter(pluginTemplate):
             f" -I {archtest_env}"
              " {0} -o {1}.elf {2}"
         )
-        objcopy_args = "-O verilog --verilog-data-width=4"
+        objcopy_args = "-O verilog --verilog-data-width=4 --change-addresses -0x80000000"
         self.objcopy_cmd = (
             f"riscv32-unknown-elf-objcopy {objcopy_args}"
              " {0}.elf {0}.hex"
@@ -123,14 +123,16 @@ class otter(pluginTemplate):
         # function earlier
         make.makeCommand = f'make -k -j{self.num_jobs}'
 
-        for testname in testList:
+        logging.info(f"Adding Targets:")
+        for idx, testname in enumerate(testList):
             testentry = testList[testname]
             # path to the assembly file of this test
             test_path = testentry['test_path']
             # location to dump test artifacts
             test_dir = testentry['work_dir']
 
-            echo_cmd = f"echo \"Running Test: {os.path.basename(test_path)}\""
+            test_name = os.path.basename(test_path)
+            echo_cmd = f"echo \"Running Test: {test_name}\""
             cd_cmd = f"cd {test_dir}"
 
             # substitute all variables in the compile command that we created in the initialize function
@@ -150,7 +152,7 @@ class otter(pluginTemplate):
 
             # concatenate all commands that need to be executed within a make-target.
             final_cmd = f"@{cd_cmd}; {echo_cmd}; {compile_cmd}; {objcopy_cmd}; {sim_cmd};"
-            logging.info(f"Added Target {test_path}; outputs to {test_dir}")
+            logging.info(f"  [{idx:3}/{len(testList):3}] - {test_name}")
             make.add_target(final_cmd)
 
         # execute all targets
