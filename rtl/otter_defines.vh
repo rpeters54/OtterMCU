@@ -8,6 +8,7 @@
     `define INSTRN_CSR(instrn)        (instrn[31:20])
     `define INSTRN_MEM_SIZE(instrn)   (instrn[13:12])
     `define INSTRN_MEM_SIGN(instrn)   (instrn[14])
+    `define INSTRN_FM_FENCE(instrn)   (instrn[31:28])
 
     `define INSTRN_FUNCT7(instrn)     (instrn[31:25])
     `define INSTRN_RS2_ADDR(instrn)   (instrn[24:20])
@@ -69,6 +70,9 @@
     localparam FUNCT3_R_OR      = 3'b110;
     localparam FUNCT3_R_AND     = 3'b111;
 
+    localparam FUNCT3_FENCE     = 3'b000;
+    localparam FUNCT3_FENCE_I   = 3'b001;
+
     localparam FUNCT3_SYS_CSRRW  = 3'b001;
     localparam FUNCT3_SYS_CSRRS  = 3'b010;
     localparam FUNCT3_SYS_CSRRC  = 3'b011;
@@ -87,9 +91,7 @@
     localparam FUNCT7_RS2_SYS_MRET   = 12'h302;
     localparam FUNCT7_RS2_SYS_WFI    = 12'h205;
 
-    // Instruction Prefixes (everything except opcode)
-    localparam PREFIX_FENCE   = 25'b0000_zzzz_zzzz_00000_001_00000;
-    localparam PREFIX_FENCE_I = 25'b0000_0000_0000_00000_001_00000;
+    localparam FM_FENCE              = 4'bz000;
 
     //--------------//
     // ALU Defines
@@ -144,53 +146,24 @@
 	localparam CSR_MCYCLEH_ADDR   = 12'hB80;
 	localparam CSR_MINSTRETH_ADDR = 12'hB82;
 
-    // Read-Only Values (MISA treated as read-only zero)
-    localparam CSR_MVENDORID_VALUE  = 32'h0000_0000;
-    localparam CSR_MARCHID_VALUE    = 32'h0000_0000;
-    localparam CSR_MIMPID_VALUE     = 32'h0000_0000;
-    localparam CSR_MHARTID_VALUE    = 32'h0000_0000;
-    localparam CSR_MCONFIGPTR_VALUE = 32'h0000_0000;
-
-
-    // All Writeable Register Masks
-
-    // bit 3 = MIE and bit 7 = MPIE are writeable, remaining bits are ignored
-    localparam CSR_MSTATUS_MASK  = 32'h0000_0088;
-
-    // everything is left as default
-    localparam CSR_MSTATUSH_MASK = 32'h0000_0000;
-
-    // misa is read-only in this implementation
-    localparam CSR_MISA_MASK     = 32'h0000_0000;
-
-    // bit 11 = External IRQ, bit 7 = Timer IRQ, bit 3 = Software IRQ
-    // bits 31-15 = Custom IRQs
-    localparam CSR_MIE_MASK      = 32'h0000_0888;
-    localparam CSR_MIP_MASK      = 32'h0000_0008;
-
-    // bit 1 must always remain zero, MODE can only be 0 = Direct, 1 = Vec
-    // for ease of implementation, I only allow direct
-    localparam CSR_MTVEC_MASK    = 32'hFFFF_FFFC;
-
-    localparam CSR_MCAUSE_MASK   = 32'h0000_001F;
-    localparam CSR_MEPC_MASK     = 32'hFFFF_FFFC;
-
-    // behavior is user-defined, so ignoring for simplicity
-    localparam CSR_MTVAL_MASK    = 32'h0000_0000;
-
-    // user-defined scratch space, the world is your oyster
-    localparam CSR_MSCRATCH_MASK = 32'hFFFF_FFFF;
-
-    localparam CSR_MEIE_BIT = 32'h0000_0800;
 
     // MCAUSE Codes
-    localparam MCAUSE_MACHINE_SOFTWARE_INTERRUPT = 32'h80000003;
-    localparam MCAUSE_MACHINE_TIMER_INTERRUPT    = 32'h80000007;
-    localparam MCAUSE_MACHINE_EXTERNAL_INTERRUPT = 32'h8000000b;
+    localparam MCAUSE_SEL_NOP                  = 3'd0;
+    localparam MCAUSE_SEL_INSTRN_ADDR_MISALIGN = 3'd1;
+    localparam MCAUSE_SEL_INVLD_INSTRN         = 3'd2;
+    localparam MCAUSE_SEL_LOAD_ADDR_MISALIGN   = 3'd3;
+    localparam MCAUSE_SEL_STORE_ADDR_MISALIGN  = 3'd4;
 
-    localparam MCAUSE_INVALID_INSTRUCTION      = 32'h00000002;
-    localparam MCAUSE_BREAKPOINT               = 32'h00000003;
-    localparam MCAUSE_ECALL_M_MODE             = 32'h0000000b;
+    localparam MCAUSE_CODE_INSTRN_ADDR_MISALIGN = 32'h00000000;
+    localparam MCAUSE_CODE_INVLD_INSTRN         = 32'h00000002;
+    localparam MCAUSE_CODE_BREAKPOINT           = 32'h00000003;
+    localparam MCAUSE_CODE_LOAD_ADDR_MISALIGN   = 32'h00000004;
+    localparam MCAUSE_CODE_STORE_ADDR_MISALIGN  = 32'h00000006;
+    localparam MCAUSE_CODE_ECALL_M_MODE         = 32'h0000000b;
+
+    localparam MCAUSE_CODE_MACHINE_SOFTWARE_INTERRUPT = 32'h80000003;
+    localparam MCAUSE_CODE_MACHINE_TIMER_INTERRUPT    = 32'h80000007;
+    localparam MCAUSE_CODE_MACHINE_EXTERNAL_INTERRUPT = 32'h8000000b;
 
     // CSR Func Selectors
     localparam CSR_OP_WRITE  = 3'd0;
@@ -200,6 +173,7 @@
     localparam CSR_OP_WFI    = 3'd4;
     localparam CSR_OP_INTRPT = 3'd5;
     localparam CSR_OP_TRAP   = 3'd6;
+    localparam CSR_OP_RESET  = 3'd7;
 
     localparam CSR_FUNCT3_LOW_RW = 2'b01;
     localparam CSR_FUNCT3_LOW_RS = 2'b10;
@@ -228,12 +202,13 @@
     // PC Defines
     //--------------//
 
-    localparam PC_SRC_SEL_ADDR_INC = 3'd0;
-    localparam PC_SRC_SEL_JALR     = 3'd1;
-    localparam PC_SRC_SEL_BRANCH   = 3'd2;
-    localparam PC_SRC_SEL_JAL      = 3'd3;
-    localparam PC_SRC_SEL_MTVEC    = 3'd4;
-    localparam PC_SRC_SEL_MEPC     = 3'd5;
+    localparam PC_SRC_SEL_ADDR_INC  = 3'd0;
+    localparam PC_SRC_SEL_JALR      = 3'd1;
+    localparam PC_SRC_SEL_BRANCH    = 3'd2;
+    localparam PC_SRC_SEL_JAL       = 3'd3;
+    localparam PC_SRC_SEL_MTVEC     = 3'd4;
+    localparam PC_SRC_SEL_MEPC      = 3'd5;
+    localparam PC_SRC_SEL_RESET_VEC = 3'd6;
 
     //--------------//
     // FSM Defines
@@ -248,39 +223,36 @@
     //--------------//
 
     `define RVFI_CSR_LIST \
-        X(mstatus)    \
-        X(misa)       \
-        X(mie)        \
-        X(mtvec)      \
-        X(mstatush)   \
-        X(mscratch)   \
-        X(mepc)       \
-        X(mcause)     \
-        X(mtval)      \
-        X(mip)        \
-        X(mvendorid)  \
-        X(marchid)    \
-        X(mimpid)     \
-        X(mhartid)    \
-        X(mconfigptr)
+        `CSR_MACRO_OP(mstatus)    \
+        `CSR_MACRO_OP(misa)       \
+        `CSR_MACRO_OP(mie)        \
+        `CSR_MACRO_OP(mtvec)      \
+        `CSR_MACRO_OP(mstatush)   \
+        `CSR_MACRO_OP(mscratch)   \
+        `CSR_MACRO_OP(mepc)       \
+        `CSR_MACRO_OP(mcause)     \
+        `CSR_MACRO_OP(mtval)      \
+        `CSR_MACRO_OP(mip)        \
+        `CSR_MACRO_OP(mvendorid)  \
+        `CSR_MACRO_OP(marchid)    \
+        `CSR_MACRO_OP(mimpid)     \
+        `CSR_MACRO_OP(mhartid)    \
+        `CSR_MACRO_OP(mconfigptr)
 
-    // Port declarations
-    `define X(NAME) \
+    `define CSR_MACRO_OP(NAME) \
         output reg [31:0] rvfi_csr_``NAME``_rmask, \
         output reg [31:0] rvfi_csr_``NAME``_wmask, \
         output reg [31:0] rvfi_csr_``NAME``_rdata, \
         output reg [31:0] rvfi_csr_``NAME``_wdata,
-    `define RVFI_CSR_PORTS `RVFI_CSR_LIST
-    `undef X
+    `undef CSR_MACRO_OP
 
     // Assignments
-    `define X(NAME) \
+    `define CSR_MACRO_OP(NAME) \
         rvfi_csr_``NAME``_rmask <= 32'hffff_ffff; \
         rvfi_csr_``NAME``_wmask <= 32'hffff_ffff; \
         rvfi_csr_``NAME``_rdata <= csr_``NAME``; \
         rvfi_csr_``NAME``_wdata <= csr_``NAME``;
-    `define RVFI_CSR_ASSIGNMENTS `RVFI_CSR_LIST
-    `undef X
+    `undef CSR_MACRO_OP
 
     `define RVFI_OUTPUTS                  \
         output reg        rvfi_valid,     \
@@ -304,6 +276,6 @@
         output reg [ 3:0] rvfi_mem_wmask, \
         output reg [31:0] rvfi_mem_rdata, \
         output reg [31:0] rvfi_mem_wdata, \
-        `RFVI_CSR_PORTS
+        `RVFI_CSR_LIST
 
 `endif

@@ -31,8 +31,11 @@ module otter_br_addr_gen (
     output [31:0] jalr_addr
 );
 
+    // BUGFIX: as per spec: jalr always clears bit zero
+    wire [31:0] jalr_intrmd = i_type_immed + rs1;
+
     assign jal_addr    = jump_immed   + prog_count;
     assign branch_addr = branch_immed + prog_count;
-    assign jalr_addr   = i_type_immed + rs1;
+    assign jalr_addr   = {jalr_intrmd[31:1], 1'b0};
 
 endmodule

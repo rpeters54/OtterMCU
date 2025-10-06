@@ -1,1 +1,6 @@
 .nvim
+.venv
+.DS_Store
+obj_dir
+riscv-arch-test
+riscof_work

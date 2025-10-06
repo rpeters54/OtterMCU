@@ -1,0 +1,746 @@
+hart_ids: [0]
+hart0:
+  # Your core is RV32I with Zicsr only (no M, no C extensions)
+  ISA: RV32IZicsr_Zifencei
+  physical_addr_sz: 32
+  User_Spec_Version: '2.3'
+  Privilege_Spec_Version: "1.11"
+  hw_data_misaligned_support: False
+  supported_xlen: [32]
+
+  # Machine Information Registers (Read-only)
+  # From your CSR module: mvendorid, marchid, mimpid, mhartid, mconfigptr
+  mvendorid:
+    rv32:
+      accessible: true
+      type:
+        ro_constant: 0x00000000
+    rv64:
+      accessible: false
+
+  marchid:
+    rv32:
+      accessible: true
+      type:
+        ro_constant: 0x00000000
+    rv64:
+      accessible: false
+
+  mimpid:
+    rv32:
+      accessible: true
+      type:
+        ro_constant: 0x00000000
+    rv64:
+      accessible: false
+
+  mhartid:
+    rv32:
+      accessible: true
+      type:
+        ro_constant: 0x00000000
+    rv64:
+      accessible: false
+
+  # Machine Trap Setup
+  # Your CSR module has: mstatus (WARL with mask)
+  mstatus:
+    reset-val: 0x00000000
+    rv32:
+      accessible: true
+      fields:
+        - MIE: [3, 1]      # Machine Interrupt Enable
+        - MPIE: [7, 1]     # Previous MIE
+    rv64:
+      accessible: false
+
+  mstatush:
+    reset-val: 0x00000000
+    rv32:
+      accessible: true
+    rv64:
+      accessible: false
+
+  misa:
+    reset-val: 0x40000100  # RV32I (bit 8 set, MXL=01)
+    rv32:
+      accessible: true
+      fields:
+        - extensions
+        - mxl
+      mxl:
+        implemented: true
+        type:
+          ro_constant: 0x1
+      extensions:
+        implemented: true
+        type:
+          ro_constant: 0x0000100
+    rv64:
+      accessible: false
+
+  # Your CSR module has: mie (WARL with mask)
+  mie:
+    reset-val: 0x00000000
+    rv32:
+      accessible: true
+      fields:
+        - MSIE: [3, 1]   # Machine software interrupt enable
+        - MTIE: [7, 1]   # Machine timer interrupt enable
+        - MEIE: [11, 1]  # Machine external interrupt enable
+    rv64:
+      accessible: false
+
+  mtvec:
+    reset-val: 0x00000000
+    rv32:
+      accessible: true
+      fields:
+        - MODE: [1:0, 2]   # 0=Direct, 1=Vectored
+        - BASE: [31:2, 30] # Trap vector base address
+    rv64:
+      accessible: false
+
+  # Machine Trap Handling
+  # Your CSR module has: mscratch (WARL with mask)
+  mscratch:
+    reset-val: 0x00000000
+    rv32:
+      accessible: true
+    rv64:
+      accessible: false
+
+  # Your CSR module has: mepc (WARL with mask)
+  mepc:
+    reset-val: 0x00000000
+    rv32:
+      accessible: true
+    rv64:
+      accessible: false
+
+  mcause:
+    reset-val: 0x00000000
+    rv32:
+      accessible: true
+      fields:
+        - Exception_Code: [30:0, 31]
+        - Interrupt: [31, 1]
+    rv64:
+      accessible: false
+
+  mtval:
+    reset-val: 0x00000000
+    rv32:
+      accessible: true
+    rv64:
+      accessible: false
+
+  # Special behavior: bit 11 (MEIP) is read-only and tied to ext_intrpt
+  mip:
+    reset-val: 0x00000000
+    rv32:
+      accessible: true
+      fields:
+        - MSIP: [3, 1]   # Machine software interrupt pending
+        - MTIP: [7, 1]   # Machine timer interrupt pending
+        - MEIP: [11, 1]  # Machine external interrupt pending (read-only)
+      # WARL: (result & CSR_MIP_MASK) | (mip & ~CSR_MIP_MASK)
+      # Bit 11 is read-only and reflects ext_intrpt
+    rv64:
+      accessible: false
+
+  # Unimplemented CSRs
+
+  # Machine Counter/Timers
+  mcycle:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mcycleh:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  minstret:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  minstreth:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  # User-level counter access
+  cycle:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  cycleh:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  instret:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  instreth:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  time:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  timeh:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+
+# Hardware Performance Monitor Counters (not implemented)
+  mhpmcounter3:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter4:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter5:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter6:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter7:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter8:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter9:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter10:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter11:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter12:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter13:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter14:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter15:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter16:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter17:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter18:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter19:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter20:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter21:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter22:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter23:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter24:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter25:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter26:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter27:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter28:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter29:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter30:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter31:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  # Hardware Performance Monitor Counter Highs (not implemented)
+  mhpmcounter3h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter4h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter5h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter6h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter7h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter8h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter9h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter10h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter11h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter12h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter13h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter14h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter15h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter16h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter17h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter18h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter19h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter20h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter21h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter22h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter23h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter24h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter25h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter26h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter27h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter28h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter29h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter30h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmcounter31h:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  # Hardware Performance Monitor Event Selectors (not implemented)
+  mhpmevent3:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent4:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent5:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent6:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent7:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent8:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent9:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent10:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent11:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent12:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent13:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent14:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent15:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent16:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent17:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent18:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent19:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent20:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent21:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent22:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent23:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent24:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent25:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent26:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent27:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent28:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent29:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent30:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+      
+  mhpmevent31:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+
+  mcountinhibit:
+    rv32:
+      accessible: false
+    rv64:
+      accessible: false
+

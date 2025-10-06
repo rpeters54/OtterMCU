@@ -23,7 +23,6 @@
 
 module otter_pc (
     input             clk,
-    input             rst,
     input             w_en,
     input      [31:0] next_addr,
 
@@ -31,13 +30,14 @@ module otter_pc (
     output     [31:0] addr_inc
 );
 
+    // addresses should always be word-aligned
+    localparam PC_ADDR_MASK = 32'hFFFF_FFFC;
+
     assign addr_inc = addr + 'd4;
 
     always @(posedge clk) begin
-        if (rst) begin
-            addr <= 0;
-        end else if (w_en) begin
-            addr <= next_addr & 32'hFFFF_FFFC;
+        if (w_en) begin
+            addr <= next_addr & PC_ADDR_MASK;
         end
     end
 

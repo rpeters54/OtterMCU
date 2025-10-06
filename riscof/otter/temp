@@ -1,0 +1,1 @@
+cd otter/env/; verilator --binary --timing --trace --trace-structs --assert --timescale 1ns --quiet -I/Users/rileypeters/OtterMCU/rtl -o tb_otter tb_otter.sv >> /dev/null

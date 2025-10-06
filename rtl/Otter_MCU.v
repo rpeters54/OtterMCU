@@ -21,10 +21,18 @@
 
 `include "otter_defines.vh"
 
-module otter_mcu (
-    input         clk,
-    input         rst, 
-    input         intrpt, 
+`define CSR_MACRO_OP(NAME) \
+    output reg [31:0] rvfi_csr_``NAME``_rmask, \
+    output reg [31:0] rvfi_csr_``NAME``_wmask, \
+    output reg [31:0] rvfi_csr_``NAME``_rdata, \
+    output reg [31:0] rvfi_csr_``NAME``_wdata,
+
+module otter_mcu #(
+    parameter RESET_VEC = 0
+) (
+    input             clk,
+    input             rst, 
+    input      [31:0] intrpt, 
 
 `ifdef RISCV_FORMAL
     `RVFI_OUTPUTS
@@ -41,11 +49,12 @@ module otter_mcu (
     output     [31:0] dmem_w_data
 );
 
+`undef CSR_MACRO_OP
+
     wire [31:0] alu_result;
     wire [31:0] rfile_r_rs1, rfile_r_rs2;
 
     assign dmem_addr   = alu_result;
-    assign dmem_w_data = rfile_r_rs2;
 
     //------------------------------------------------------------------------------------------------------//
     // Control Unit Decoder: controls all mux selectors based on the instruction opcode and function number
@@ -65,6 +74,8 @@ module otter_mcu (
     wire [1:0] rfile_w_sel;
     wire [2:0] pc_src_sel;
     wire [2:0] csr_op_sel;
+    wire [2:0] csr_mcause_sel;
+    wire [3:0] dmem_w_base_strb;
 
     wire [31:0] i_type_immed, s_type_immed;
     wire [1:0] addr_load_alignment  = rfile_r_rs1[1:0] + i_type_immed[1:0];
@@ -74,7 +85,6 @@ module otter_mcu (
     wire rfile_w_en;
     wire csr_w_en;
     wire dcdr_stall;
-    wire dcdr_reset;
 
     // Addr Gen values
     wire [31:0] addr_gen_jalr, addr_gen_branch, addr_gen_jal;
@@ -114,15 +124,15 @@ module otter_mcu (
         .rfile_w_sel(rfile_w_sel),
         .pc_src_sel(pc_src_sel),
         .csr_op_sel(csr_op_sel),
-        .dmem_w_strb(dmem_w_strb),
+        .csr_mcause_sel(csr_mcause_sel),
+        .dmem_w_base_strb(dmem_w_base_strb),
 
         .pc_w_en(pc_w_en),
         .rfile_w_en(rfile_w_en),
         .dmem_w_en(dmem_w_en),
         .dmem_r_en(dmem_r_en),
         .csr_w_en(csr_w_en),
-        .stall(dcdr_stall),
-        .reset(dcdr_reset)
+        .stall(dcdr_stall)
     );
 
     //-----------------------------------------------------------------------------------//
@@ -130,6 +140,7 @@ module otter_mcu (
     //-----------------------------------------------------------------------------------//
 
     wire [2:0]  funct3 = `INSTRN_FUNCT3(imem_r_data);
+    wire [6:0]  opcode = `INSTRN_OPCODE(imem_r_data);
 
     // PC values
     wire [31:0] pc_addr, pc_addr_inc;
@@ -142,7 +153,8 @@ module otter_mcu (
     wire [31:0] csr_r_data, csr_mtvec, csr_mepc;
 
     // selector outputs
-    reg  [31:0] alu_src_a, alu_src_b, rfile_w_data, pc_next_addr, csr_w_data, dmem_r_masked_data;
+    reg  [31:0] alu_src_a, alu_src_b, rfile_w_data, pc_next_addr, csr_w_data,
+        dmem_r_masked_data, csr_mtval_trap_addr;
 
     // Avoid advancing instruction when stalled
     always @(*) begin
@@ -155,14 +167,17 @@ module otter_mcu (
     always @(*) begin
         dmem_r_masked_data = dmem_r_data >> (addr_load_alignment * 8);
         case (funct3)
-            FUNCT3_I_LB  : dmem_r_masked_data = {24'd0, dmem_r_masked_data[7:0]};
-            FUNCT3_I_LH  : dmem_r_masked_data = {16'd0, dmem_r_masked_data[15:0]};
+            FUNCT3_I_LB  : dmem_r_masked_data = {{24{dmem_r_masked_data[7]}}, dmem_r_masked_data[7:0]};
+            FUNCT3_I_LH  : dmem_r_masked_data = {{16{dmem_r_masked_data[15]}}, dmem_r_masked_data[15:0]};
             FUNCT3_I_LW  : dmem_r_masked_data = dmem_r_masked_data;
-            FUNCT3_I_LBU : dmem_r_masked_data = {{24{dmem_r_masked_data[7]}}, dmem_r_masked_data[7:0]};
-            FUNCT3_I_LHU : dmem_r_masked_data = {{16{dmem_r_masked_data[15]}}, dmem_r_masked_data[15:0]};
+            FUNCT3_I_LBU : dmem_r_masked_data = {24'd0, dmem_r_masked_data[7:0]};
+            FUNCT3_I_LHU : dmem_r_masked_data = {16'd0, dmem_r_masked_data[15:0]};
             default      : ;
         endcase
     end
+    // align the data and strb so that values are stored properly
+    assign dmem_w_data = rfile_r_rs2 << (addr_store_alignment * 8);
+    assign dmem_w_strb = dmem_w_base_strb << addr_store_alignment;
     // Select what sources go into the ALU
     always @(*) begin
         case (alu_src_sel_a)
@@ -188,13 +203,14 @@ module otter_mcu (
     // Select what the next address is sourced from
     always @(*) begin
         case(pc_src_sel)
-            PC_SRC_SEL_ADDR_INC : pc_next_addr = pc_addr_inc;
-            PC_SRC_SEL_JALR     : pc_next_addr = addr_gen_jalr;
-            PC_SRC_SEL_BRANCH   : pc_next_addr = addr_gen_branch;
-            PC_SRC_SEL_JAL      : pc_next_addr = addr_gen_jal;
-            PC_SRC_SEL_MTVEC    : pc_next_addr = csr_mtvec;
-            PC_SRC_SEL_MEPC     : pc_next_addr = csr_mepc;
-            default             : pc_next_addr = 32'hDEADDEAD;
+            PC_SRC_SEL_ADDR_INC  : pc_next_addr = pc_addr_inc;
+            PC_SRC_SEL_JALR      : pc_next_addr = addr_gen_jalr;
+            PC_SRC_SEL_BRANCH    : pc_next_addr = addr_gen_branch;
+            PC_SRC_SEL_JAL       : pc_next_addr = addr_gen_jal;
+            PC_SRC_SEL_MTVEC     : pc_next_addr = csr_mtvec;
+            PC_SRC_SEL_MEPC      : pc_next_addr = csr_mepc;
+            PC_SRC_SEL_RESET_VEC : pc_next_addr = RESET_VEC;
+            default              : pc_next_addr = 32'hDEADDEAD;
         endcase
     end
     // Choose data source for csrs based on instruction imm/reg bit
@@ -204,6 +220,22 @@ module otter_mcu (
             CSR_FUNCT3_HIGH_IMM : csr_w_data = z_immed;
         endcase
     end
+    // On trap for attempted misaligned imem/dmem access, set mtval accordingly 
+    always @(*) begin
+        case (csr_mcause_sel)
+            MCAUSE_SEL_INSTRN_ADDR_MISALIGN : begin
+                case (opcode)
+                    OPCODE_JAL    :  csr_mtval_trap_addr = addr_gen_jal;
+                    OPCODE_JALR   :  csr_mtval_trap_addr = addr_gen_jalr;
+                    OPCODE_BRANCH :  csr_mtval_trap_addr = addr_gen_branch;
+                    default       :  csr_mtval_trap_addr = '0;
+                endcase
+            end
+            MCAUSE_SEL_LOAD_ADDR_MISALIGN   : csr_mtval_trap_addr = alu_result;
+            MCAUSE_SEL_STORE_ADDR_MISALIGN  : csr_mtval_trap_addr = alu_result;
+            default                         : csr_mtval_trap_addr = '0;
+        endcase
+    end
 
     //---------------------------------------------------------//
     // Program Counter: keeps track of the current instruction
@@ -211,7 +243,6 @@ module otter_mcu (
 
     otter_pc pc (
         .clk(clk),
-        .rst(dcdr_reset),
         .w_en(pc_w_en),
         .next_addr(pc_next_addr),
         .addr(pc_addr),
@@ -303,15 +334,16 @@ module otter_mcu (
 
     otter_csr csr (
         .clk(clk),
-        .rst(dcdr_reset), 
-        .ext_intrpt(intrpt), 
+        .intrpt(intrpt), 
 
-        .op(csr_op_sel),
+        .op_sel(csr_op_sel),
+        .mcause_sel(csr_mcause_sel),
         .funct3_low(funct3[1:0]),
         .w_en(csr_w_en),
         .addr(csr_addr),
         .pc_addr(pc_addr), 
         .w_data(csr_w_data),
+        .mtval_trap_addr(csr_mtval_trap_addr),
 
         .intrpt_vld(csr_intrpt_vld),
         .read_only(csr_read_only),
@@ -343,7 +375,7 @@ module otter_mcu (
     `ifdef RISCV_FORMAL
 	
         wire next_rvfi_valid = (dcdr_state == ST_EXEC && !dmem_r_en) || dcdr_state == ST_WR_BK;
-        wire next_rvfi_intr; 
+        reg  next_rvfi_intr; 
 
         always @(posedge clk) begin
 
@@ -391,15 +423,15 @@ module otter_mcu (
                 if (dmem_r_en || dmem_w_en) begin
                     rvfi_mem_addr <= dmem_addr;
                     case ({dmem_r_en, funct3})
-                        4'b 1_000 /* LB  */: begin rvfi_mem_rmask <= 4'b 0001 << addr_load_alignment; end
-                        4'b 1_001 /* LH  */: begin rvfi_mem_rmask <= 4'b 0011 << addr_load_alignment; end
-                        4'b 1_010 /* LW  */: begin rvfi_mem_rmask <= 4'b 1111 << addr_load_alignment; end
-                        4'b 1_100 /* LBU */: begin rvfi_mem_rmask <= 4'b 0001 << addr_load_alignment; end
-                        4'b 1_101 /* LHU */: begin rvfi_mem_rmask <= 4'b 0011 << addr_load_alignment; end
+                        {1'b1, FUNCT3_I_LB}  : begin rvfi_mem_rmask <= 4'b 0001 << addr_load_alignment; end
+                        {1'b1, FUNCT3_I_LH}  : begin rvfi_mem_rmask <= 4'b 0011 << addr_load_alignment; end
+                        {1'b1, FUNCT3_I_LW}  : begin rvfi_mem_rmask <= 4'b 1111 << addr_load_alignment; end
+                        {1'b1, FUNCT3_I_LBU} : begin rvfi_mem_rmask <= 4'b 0001 << addr_load_alignment; end
+                        {1'b1, FUNCT3_I_LHU} : begin rvfi_mem_rmask <= 4'b 0011 << addr_load_alignment; end
                         default: rvfi_mem_rmask <= 0;
                     endcase
-                    rvfi_mem_wmask <= dmem_wstrb;
-                    rvfi_mem_wdata <= dmem_wdata;
+                    rvfi_mem_wmask <= dmem_w_strb;
+                    rvfi_mem_wdata <= dmem_w_data;
                 end else begin
                     rvfi_mem_addr  <= 0;
                     rvfi_mem_rmask <= 0;
@@ -416,9 +448,16 @@ module otter_mcu (
             end
         end
 
-        always @(*) begin
+        always @(posedge clk) begin
             if (next_rvfi_valid) begin
-                `RVFI_CSR_ASSIGNMENTS
+            `define CSR_MACRO_OP(NAME) \
+                rvfi_csr_``NAME``_rmask <= 32'hffff_ffff; \
+                rvfi_csr_``NAME``_wmask <= 32'hffff_ffff; \
+                rvfi_csr_``NAME``_rdata <= csr_``NAME``; \
+                rvfi_csr_``NAME``_wdata <= csr_``NAME``;
+
+                `RVFI_CSR_LIST
+            `undef CSR_MACRO_OP
             end
         end
     `endif
