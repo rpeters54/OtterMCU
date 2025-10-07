@@ -90,8 +90,8 @@ module otter_mcu #(
     wire [31:0] addr_gen_jalr, addr_gen_branch, addr_gen_jal;
 
 `ifdef RISCV_FORMAL
-        wire       dcdr_intrpt_taken, dcdr_trap_taken;
-        wire [1:0] dcdr_state;
+        wire       rvfi_intrpt_taken, rvfi_trap_taken;
+        wire [1:0] rvfi_present_state, rvfi_next_state;
 `endif
 
     otter_cu_dcdr dcdr (
@@ -114,10 +114,12 @@ module otter_mcu #(
         .addr_jal_alignment(addr_gen_jal[1:0]),
 
 `ifdef RISCV_FORMAL
-        .intrpt_taken(dcdr_intrpt_taken),
-        .trap_taken(dcdr_trap_taken),
-        .state(dcdr_state),
+        .rvfi_intrpt_taken(rvfi_intrpt_taken),
+        .rvfi_trap_taken(rvfi_trap_taken),
+        .rvfi_present_state(rvfi_present_state),
+        .rvfi_next_state(rvfi_next_state),
 `endif
+
         .alu_func(alu_func),
         .alu_src_sel_a(alu_src_sel_a),
         .alu_src_sel_b(alu_src_sel_b),
@@ -381,7 +383,7 @@ module otter_mcu #(
 
     `ifdef RISCV_FORMAL
 	
-        wire next_rvfi_valid = (dcdr_state == ST_EXEC && !dmem_r_en) || dcdr_state == ST_WR_BK;
+        wire next_rvfi_valid = (rvfi_present_state == ST_EXEC && !dmem_r_en) || rvfi_present_state == ST_WR_BK;
         reg  next_rvfi_intr; 
 
         always @(posedge clk) begin
@@ -389,7 +391,7 @@ module otter_mcu #(
             rvfi_valid <= next_rvfi_valid;
 
             // set for both execute and writeback states
-            if (dcdr_state == ST_EXEC || dcdr_state == ST_WR_BK) begin
+            if (rvfi_present_state == ST_EXEC || rvfi_present_state == ST_WR_BK) begin
                 // rfile dest traces
                 rvfi_rd_addr   <= rfile_w_en ? rfile_w_addr : '0;
                 rvfi_rd_wdata  <= rfile_w_en ? rfile_w_data : '0;
@@ -397,8 +399,8 @@ module otter_mcu #(
             end
 
             // set for solely the execute state
-            if (dcdr_state == ST_EXEC) begin
-                next_rvfi_intr <= dcdr_trap_taken || dcdr_intrpt_taken;
+            if (rvfi_present_state == ST_EXEC) begin
+                next_rvfi_intr <= rvfi_trap_taken || rvfi_intrpt_taken;
                 // have a monotonically increasing counter that tracks the instruction order
                 rvfi_order <= rvfi_order + '1;
                 // current instruction fetched from memory
@@ -447,7 +449,7 @@ module otter_mcu #(
                 end
             end
 
-            if (rst || dcdr_state == ST_INIT) begin
+            if (rst || rvfi_present_state == ST_INIT) begin
                 next_rvfi_intr <= 0;
                 rvfi_valid <= 0;
                 rvfi_order <= 0;

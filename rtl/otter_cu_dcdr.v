@@ -45,9 +45,10 @@ module otter_cu_dcdr (
     input      [1:0] addr_jal_alignment,
 
 `ifdef RISCV_FORMAL
-    output reg       intrpt_taken,
-    output reg       trap_taken,
-    output     [1:0] state,
+    output reg       rvfi_intrpt_taken,
+    output reg       rvfi_trap_taken,
+    output     [1:0] rvfi_present_state,
+    output     [1:0] rvfi_next_state,
 `endif
 
     // selectors
@@ -95,14 +96,15 @@ module otter_cu_dcdr (
     end
 
 `ifdef RISCV_FORMAL
-    assign state = present_state;
+    assign rvfi_present_state = present_state;
+    assign rvfi_next_state    = next_state;
 `endif
 
     always @(*) begin
 
 `ifdef RISCV_FORMAL
-        intrpt_taken = '0;
-        trap_taken   = '0;
+        rvfi_intrpt_taken = '0;
+        rvfi_trap_taken   = '0;
 `endif
         // selector defaults
         alu_func         = ALU_ADD; 
@@ -381,14 +383,14 @@ module otter_cu_dcdr (
                     pc_src_sel = PC_SRC_SEL_MTVEC;
                     csr_op_sel = CSR_OP_INTRPT;
 `ifdef RISCV_FORMAL
-                    intrpt_taken   = '1;
+                    rvfi_intrpt_taken   = '1;
 `endif
                 // trap case
                 end else if (|csr_trap_cause_sel) begin
                     pc_src_sel = PC_SRC_SEL_MTVEC;
                     csr_op_sel = CSR_OP_TRAP;
 `ifdef RISCV_FORMAL
-                    trap_taken   = '1;
+                    rvfi_trap_taken   = '1;
 `endif
                 end
 
