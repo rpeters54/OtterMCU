@@ -35,7 +35,7 @@ module otter_cu_dcdr (
     // CSR Signals
     input            csr_intrpt_vld,
     input            csr_addr_vld,
-    input            csr_read_only,
+    input            csr_illegal_write,
 
     // Alignment Signals
     input      [1:0] addr_store_alignment,
@@ -45,8 +45,6 @@ module otter_cu_dcdr (
     input      [1:0] addr_jal_alignment,
 
 `ifdef RISCV_FORMAL
-    output reg       rvfi_intrpt_taken,
-    output reg       rvfi_trap_taken,
     output     [1:0] rvfi_present_state,
     output     [1:0] rvfi_next_state,
 `endif
@@ -101,11 +99,6 @@ module otter_cu_dcdr (
 `endif
 
     always @(*) begin
-
-`ifdef RISCV_FORMAL
-        rvfi_intrpt_taken = '0;
-        rvfi_trap_taken   = '0;
-`endif
         // selector defaults
         alu_func         = ALU_ADD; 
         alu_src_sel_a    = ALU_SRC_SEL_A_RS1; 
@@ -335,7 +328,7 @@ module otter_cu_dcdr (
                                     || (rs1_addr != 5'b0);
 
                                 // illegal if csr dne or write to read-only
-                                if (!csr_addr_vld || (write_attempt && csr_read_only)) begin
+                                if (!csr_addr_vld || (write_attempt && csr_illegal_write)) begin
                                     csr_trap_cause_sel = TRAP_CAUSE_SEL_INVLD_INSTRN;
                                 end else begin
                                     rfile_w_sel = RFILE_W_SEL_CSR_R_DATA;
@@ -359,8 +352,6 @@ module otter_cu_dcdr (
                                         csr_op_sel = CSR_OP_MRET;
                                     end
                                     FUNCT7_RS2_SYS_WFI : begin
-                                        // TODO: make this more than just
-                                        // a nop
                                         csr_op_sel = CSR_OP_WFI;
                                     end
                                     default begin
@@ -382,16 +373,10 @@ module otter_cu_dcdr (
                 if (csr_intrpt_vld) begin
                     pc_src_sel = PC_SRC_SEL_MTVEC;
                     csr_op_sel = CSR_OP_INTRPT;
-`ifdef RISCV_FORMAL
-                    rvfi_intrpt_taken   = '1;
-`endif
                 // trap case
                 end else if (|csr_trap_cause_sel) begin
                     pc_src_sel = PC_SRC_SEL_MTVEC;
                     csr_op_sel = CSR_OP_TRAP;
-`ifdef RISCV_FORMAL
-                    rvfi_trap_taken   = '1;
-`endif
                 end
 
                 // Avoid writing back if interrupt/trap occurs
@@ -605,6 +590,7 @@ module otter_cu_dcdr (
                    rfile_w_en == '1 && 
                    rfile_w_sel == RFILE_W_SEL_PC_ADDR_INC);
 
+        //FIXME: fails to cover all legal Fences
         // Fence is valid
         if (present_state == ST_EXEC && (instrn == {PREFIX_FENCE, OPCODE_FENCE} || instrn == {PREFIX_FENCE_I, OPCODE_FENCE})) begin
             assert(!illegal_instrn);
@@ -613,6 +599,8 @@ module otter_cu_dcdr (
         // Property: For an ECALL instruction.
         if (present_state == ST_EXEC && instrn == 32'h00000073 && !f_preempted) // Full ECALL encoding
             assert(csr_op_sel == CSR_OP_ECALL && pc_src_sel == PC_SRC_SEL_MTVEC);
+
+        //TODO: add remaining System Opcode checks
     end
 
     // --- Coverage Checks ---

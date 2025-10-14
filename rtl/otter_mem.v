@@ -1,3 +1,4 @@
+`timescale 1ns / 1ps
 module otter_mem #(
     parameter ROM_FILE = "",
     parameter MEM_SIZE = 2**16

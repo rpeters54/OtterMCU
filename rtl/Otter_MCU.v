@@ -65,7 +65,7 @@ module otter_mcu #(
     wire cond_gen_ltu;
 
     wire csr_intrpt_vld;
-    wire csr_read_only;
+    wire csr_illegal_write;
     wire csr_addr_vld;
 
     wire [3:0] alu_func;
@@ -90,7 +90,6 @@ module otter_mcu #(
     wire [31:0] addr_gen_jalr, addr_gen_branch, addr_gen_jal;
 
 `ifdef RISCV_FORMAL
-        wire       rvfi_intrpt_taken, rvfi_trap_taken;
         wire [1:0] rvfi_present_state, rvfi_next_state;
 `endif
 
@@ -105,7 +104,7 @@ module otter_mcu #(
 
         .csr_intrpt_vld(csr_intrpt_vld),
         .csr_addr_vld(csr_addr_vld),
-        .csr_read_only(csr_read_only),
+        .csr_illegal_write(csr_illegal_write),
 
         .addr_load_alignment(addr_load_alignment),
         .addr_store_alignment(addr_store_alignment),
@@ -114,8 +113,6 @@ module otter_mcu #(
         .addr_jal_alignment(addr_gen_jal[1:0]),
 
 `ifdef RISCV_FORMAL
-        .rvfi_intrpt_taken(rvfi_intrpt_taken),
-        .rvfi_trap_taken(rvfi_trap_taken),
         .rvfi_present_state(rvfi_present_state),
         .rvfi_next_state(rvfi_next_state),
 `endif
@@ -355,7 +352,7 @@ module otter_mcu #(
         .mtval_trap_addr(csr_mtval_trap_addr),
 
         .intrpt_vld(csr_intrpt_vld),
-        .read_only(csr_read_only),
+        .illegal_write(csr_illegal_write),
         .addr_vld(csr_addr_vld),
         .r_data(csr_r_data),
 
@@ -383,7 +380,10 @@ module otter_mcu #(
 
     `ifdef RISCV_FORMAL
 	
-        wire next_rvfi_valid = (rvfi_present_state == ST_EXEC && !dmem_r_en) || rvfi_present_state == ST_WR_BK;
+        wire next_rvfi_valid   =
+            (rvfi_present_state == ST_EXEC && rvfi_next_state != ST_WR_BK) || rvfi_present_state == ST_WR_BK;
+        wire rvfi_intrpt_taken = (csr_op_sel == CSR_OP_INTRPT);
+        wire rvfi_trap_taken   = (csr_op_sel == CSR_OP_TRAP);
         reg  next_rvfi_intr; 
 
         always @(posedge clk) begin
