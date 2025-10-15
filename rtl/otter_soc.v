@@ -19,6 +19,12 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
+`define CSR_MACRO_OP(NAME) \
+    output [31:0] rvfi_csr_``NAME``_rmask, \
+    output [31:0] rvfi_csr_``NAME``_wmask, \
+    output [31:0] rvfi_csr_``NAME``_rdata, \
+    output [31:0] rvfi_csr_``NAME``_wdata,
+
 module otter_soc #(
     parameter ROM_FILE  = "",
     parameter MEM_SIZE  = 2**16,
@@ -37,6 +43,8 @@ module otter_soc #(
     output reg [31:0] iobus_addr,
     output reg        iobus_wr
 );
+
+`undef CSR_MACRO_OP
 
     //-------------------------------------------------------------------//
     // MCU: RV32I Hart

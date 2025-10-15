@@ -77,9 +77,10 @@ BASEDIR:  str = f"{os.getcwd()}/../.."
 CORENAME: str = os.getcwd().split("/")[-1]
 @dataclass
 class PathConfig():
-    cfgname:      str = CFGNAME
-    basedir:      str = BASEDIR
-    corename:     str = CORENAME
+    cfgname:  str           = CFGNAME
+    basedir:  str           = BASEDIR
+    corename: str           = CORENAME
+    isa_path: Optional[str] = None
 
 
 def parse_cfg(cfg_path: str) -> Config:
@@ -350,7 +351,7 @@ def init_hargs(config: Config, isa_cfg: ISAConfig, solver_cfg: SolverConfig, pat
     }
 
     if "cover" in config:
-        hargs["cover"] = config["cover"]
+        hargs["cover"] = '\n'.join(config["cover"])
 
     if solver_cfg.solver == "bmc3":
         hargs["engine"] = "abc bmc3"
@@ -364,9 +365,11 @@ def init_hargs(config: Config, isa_cfg: ISAConfig, solver_cfg: SolverConfig, pat
 
     return hargs
 
-def hfmt(text, **kwargs):
+def hfmt(text: Union[str, List[str]], **kwargs):
     lines = []
-    for line in text.split("\n"):
+    if isinstance(text, str):
+        text = text.split('\n')
+    for line in text:
         match = re.match(r"^\s*: ?(.*)", line)
         if match:
             line = match.group(1)
@@ -392,8 +395,10 @@ def add_all_check_insn(
 
     checks = []
 
+    isa_file_path = path_cfg.isa_path if path_cfg.isa_path else f"../../insns/isa_{isa_cfg.isa}.txt"
+
     for grp in solver_cfg.groups:
-        with open(f"../../insns/isa_{isa_cfg.isa}.txt") as isa_file:
+        with open(isa_file_path) as isa_file:
             for insn in isa_file:
                 for chanidx in range(isa_cfg.nret):
                     checks.append(check_insn(config, hargs, isa_cfg, solver_cfg, path_cfg, grp, insn.strip(), chanidx))
@@ -979,6 +984,12 @@ if __name__ == "__main__":
         type=str,
         help=f"Core name used by rvfi when generating checks [Default = {CORENAME}]",
     )
+    parser.add_argument(
+        "--isa-file-path",
+        dest="isa_file_path",
+        type=str,
+        help=f"path to isa text file",
+    )
     path = PathConfig()
     args = parser.parse_args()
     if args.cfgname:
@@ -987,6 +998,8 @@ if __name__ == "__main__":
         path.basedir  = args.basedir
     if args.corename:
         path.corename = args.corename
+    if args.isa_file_path:
+        path.isa_path = args.isa_file_path
 
     print(f"Creating {path.cfgname} directory.")
     shutil.rmtree(path.cfgname, ignore_errors=True)
@@ -999,5 +1012,7 @@ if __name__ == "__main__":
 
     inst_checks = add_all_check_insn(config, hargs, isa_cfg, solver_cfg, path)
     cons_checks = add_all_consistency_checks(config, hargs, isa_cfg, solver_cfg, path)
+
+    create_makefile(config, solver_cfg, path, cons_checks, inst_checks)
 
     print(f"Generated {len(cons_checks) + len(inst_checks)} checks.")

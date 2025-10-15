@@ -82,7 +82,6 @@
     localparam FUNCT3_SYS_TRAPS  = 3'b000;
 
     // Instruction FUNCT7s
-    localparam FUNCT7_I_R_Z = 7'bzzzzzzz;
     localparam FUNCT7_I_R_0 = 7'b0000000;
     localparam FUNCT7_I_R_1 = 7'b0100000;
 
@@ -90,8 +89,6 @@
     localparam FUNCT7_RS2_SYS_EBREAK = 12'h001;
     localparam FUNCT7_RS2_SYS_MRET   = 12'h302;
     localparam FUNCT7_RS2_SYS_WFI    = 12'h205;
-
-    localparam FM_FENCE              = 4'bz000;
 
     //--------------//
     // ALU Defines
@@ -239,21 +236,6 @@
         `CSR_MACRO_OP(mhartid)    \
         `CSR_MACRO_OP(mconfigptr)
 
-    `define CSR_MACRO_OP(NAME) \
-        output reg [31:0] rvfi_csr_``NAME``_rmask, \
-        output reg [31:0] rvfi_csr_``NAME``_wmask, \
-        output reg [31:0] rvfi_csr_``NAME``_rdata, \
-        output reg [31:0] rvfi_csr_``NAME``_wdata,
-    `undef CSR_MACRO_OP
-
-    // Assignments
-    `define CSR_MACRO_OP(NAME) \
-        rvfi_csr_``NAME``_rmask <= 32'hffff_ffff; \
-        rvfi_csr_``NAME``_wmask <= 32'hffff_ffff; \
-        rvfi_csr_``NAME``_rdata <= csr_``NAME``; \
-        rvfi_csr_``NAME``_wdata <= csr_``NAME``;
-    `undef CSR_MACRO_OP
-
     `define RVFI_OUTPUTS                  \
         output reg        rvfi_valid,     \
         output reg [63:0] rvfi_order,     \
@@ -276,6 +258,30 @@
         output reg [ 3:0] rvfi_mem_wmask, \
         output reg [31:0] rvfi_mem_rdata, \
         output reg [31:0] rvfi_mem_wdata, \
+        `RVFI_CSR_LIST
+
+    `define RVFI_INTERCONNECTS                  \
+        .rvfi_valid(rvfi_valid),     \
+        .rvfi_order(rvfi_order),     \
+        .rvfi_insn(rvfi_insn),      \
+        .rvfi_trap(rvfi_trap),      \
+        .rvfi_halt(rvfi_halt),      \
+        .rvfi_intr(rvfi_intr),      \
+        .rvfi_mode(rvfi_mode),      \
+        .rvfi_ixl(rvfi_ixl),       \
+        .rvfi_rs1_addr(rvfi_rs1_addr),  \
+        .rvfi_rs2_addr(rvfi_rs2_addr),  \
+        .rvfi_rs1_rdata(rvfi_rs1_rdata), \
+        .rvfi_rs2_rdata(rvfi_rs2_rdata), \
+        .rvfi_rd_addr(rvfi_rd_addr),   \
+        .rvfi_rd_wdata(rvfi_rd_wdata),  \
+        .rvfi_pc_rdata(rvfi_pc_rdata),  \
+        .rvfi_pc_wdata(rvfi_pc_wdata),  \
+        .rvfi_mem_addr(rvfi_mem_addr),  \
+        .rvfi_mem_rmask(rvfi_mem_rmask), \
+        .rvfi_mem_wmask(rvfi_mem_wmask), \
+        .rvfi_mem_rdata(rvfi_mem_rdata), \
+        .rvfi_mem_wdata(rvfi_mem_wdata), \
         `RVFI_CSR_LIST
 
 `endif

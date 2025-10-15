@@ -23,7 +23,7 @@ Created by: Riley Peters
 
  - [x]: Add rvfi traces for standard signals and implemented CSRs
  - [x]: Install and verify RV-Formal works locally
- - [ ]: Pass all formal checks
+ - [X]: Pass all formal checks
 
 
 ## RISCOF - KNOWN ISSUES:
@@ -35,4 +35,5 @@ Created by: Riley Peters
 
 - Allowed illegal instructions
 - jalr is supposed to clear its lsb
+- multi-cycle stalls can not rely on imem value remaining constant
 

@@ -22,13 +22,13 @@
 `include "otter_defines.vh"
 
 `define CSR_MACRO_OP(NAME) \
-    output reg [31:0] rvfi_csr_``NAME``_rmask, \
-    output reg [31:0] rvfi_csr_``NAME``_wmask, \
-    output reg [31:0] rvfi_csr_``NAME``_rdata, \
-    output reg [31:0] rvfi_csr_``NAME``_wdata,
+    output [31:0] rvfi_csr_``NAME``_rmask, \
+    output [31:0] rvfi_csr_``NAME``_wmask, \
+    output [31:0] rvfi_csr_``NAME``_rdata, \
+    output [31:0] rvfi_csr_``NAME``_wdata,
 
 module otter_mcu #(
-    parameter RESET_VEC = 0
+    parameter RESET_VEC = 32'h0
 ) (
     input             clk,
     input             rst, 
@@ -39,7 +39,7 @@ module otter_mcu #(
 `endif
 
     input      [31:0] imem_r_data,
-    output reg [31:0] imem_addr,
+    output     [31:0] imem_addr,
 
     input      [31:0] dmem_r_data,
     output            dmem_r_en,
@@ -51,10 +51,11 @@ module otter_mcu #(
 
 `undef CSR_MACRO_OP
 
-    wire [31:0] alu_result;
+    wire [31:0] alu_result, instrn;
     wire [31:0] rfile_r_rs1, rfile_r_rs2;
 
-    assign dmem_addr   = alu_result;
+    // address should always present as 4-byte aligned
+    assign dmem_addr = {alu_result[31:2], 2'd0};
 
     //------------------------------------------------------------------------------------------------------//
     // Control Unit Decoder: controls all mux selectors based on the instruction opcode and function number
@@ -96,7 +97,7 @@ module otter_mcu #(
     otter_cu_dcdr dcdr (
         .clk(clk),
         .rst(rst),
-        .instrn(imem_r_data), 
+        .instrn(instrn), 
 
         .br_eq(cond_gen_eq), 
         .br_lt(cond_gen_lt), 
@@ -138,8 +139,8 @@ module otter_mcu #(
     // Input Selector Muxes: Muxes managed by the decoder, select inputs to other blocks
     //-----------------------------------------------------------------------------------//
 
-    wire [2:0]  funct3 = `INSTRN_FUNCT3(imem_r_data);
-    wire [6:0]  opcode = `INSTRN_OPCODE(imem_r_data);
+    wire [2:0]  funct3 = `INSTRN_FUNCT3(instrn);
+    wire [6:0]  opcode = `INSTRN_OPCODE(instrn);
 
     // PC values
     wire [31:0] pc_addr, pc_addr_inc;
@@ -149,19 +150,23 @@ module otter_mcu #(
     wire [31:0] upper_immed, branch_immed, jump_immed, z_immed;
 
     // CSR values
-    wire [31:0] csr_r_data, csr_mtvec, csr_mepc;
+    wire [31:0] csr_r_data, pc_mtvec_addr, pc_mepc_addr;
 
     // selector outputs
     reg  [31:0] alu_src_a, alu_src_b, rfile_w_data, pc_next_addr, csr_w_data,
-        dmem_r_masked_data, csr_mtval_trap_addr;
+        dmem_r_masked_data, csr_mtval_trap_addr, prev_instrn;
+
+    reg prev_stall;
 
     // Avoid advancing instruction when stalled
-    always @(*) begin
-        case (dcdr_stall)
-            '1 : imem_addr = pc_addr;
-            '0 : imem_addr = pc_next_addr;
-        endcase
+    assign imem_addr = dcdr_stall ? pc_addr     : pc_next_addr;
+    assign instrn    = prev_stall ? prev_instrn : imem_r_data;
+    always @(posedge clk) begin
+        // track the previous instruction and stall for writebacks
+        prev_instrn <= instrn;
+        prev_stall  <= dcdr_stall;
     end
+
     // Mask and align the memory so values are read properly
     always @(*) begin
         dmem_r_masked_data = dmem_r_data >> (addr_load_alignment * 8);
@@ -206,8 +211,8 @@ module otter_mcu #(
             PC_SRC_SEL_JALR      : pc_next_addr = addr_gen_jalr;
             PC_SRC_SEL_BRANCH    : pc_next_addr = addr_gen_branch;
             PC_SRC_SEL_JAL       : pc_next_addr = addr_gen_jal;
-            PC_SRC_SEL_MTVEC     : pc_next_addr = csr_mtvec;
-            PC_SRC_SEL_MEPC      : pc_next_addr = csr_mepc;
+            PC_SRC_SEL_MTVEC     : pc_next_addr = pc_mtvec_addr;
+            PC_SRC_SEL_MEPC      : pc_next_addr = pc_mepc_addr;
             PC_SRC_SEL_RESET_VEC : pc_next_addr = RESET_VEC;
             default              : pc_next_addr = 32'hDEADDEAD;
         endcase
@@ -259,9 +264,9 @@ module otter_mcu #(
     // REG_FILE w/ Input MUX: contains all registers needed for the program
     //----------------------------------------------------------------------//
 
-    wire [4:0] rfile_r_addr1 = `INSTRN_RS1_ADDR(imem_r_data);
-    wire [4:0] rfile_r_addr2 = `INSTRN_RS2_ADDR(imem_r_data);
-    wire [4:0] rfile_w_addr  = `INSTRN_RD_ADDR(imem_r_data);
+    wire [4:0] rfile_r_addr1 = `INSTRN_RS1_ADDR(instrn);
+    wire [4:0] rfile_r_addr2 = `INSTRN_RS2_ADDR(instrn);
+    wire [4:0] rfile_w_addr  = `INSTRN_RD_ADDR(instrn);
 
     otter_rfile rf (
         .clk(clk),
@@ -279,7 +284,7 @@ module otter_mcu #(
     //----------------------------------------------------------------------------------------//
 
     otter_imm_gen imd (
-        .instrn(imem_r_data),
+        .instrn(instrn),
         .upper_immed(upper_immed), 
         .i_type_immed(i_type_immed), 
         .s_type_immed(s_type_immed), 
@@ -331,12 +336,17 @@ module otter_mcu #(
     //----------------------------------------------------------------------//
 
     // CSR wires
-    wire [11:0] csr_addr = `INSTRN_CSR(imem_r_data);
-    wire [31:0] csr_mstatus, csr_misa, csr_mie, csr_mstatush,
-                csr_mscratch, csr_mcause, csr_mtval, csr_mip;
+    wire [11:0] csr_addr = `INSTRN_CSR(instrn);
 
-    wire [31:0] csr_mvendorid, csr_marchid, csr_mimpid, csr_mhartid,
-                csr_mconfigptr;
+`ifdef RISCV_FORMAL
+    wire next_rvfi_valid   = (rvfi_present_state == ST_EXEC && rvfi_next_state != ST_WR_BK && !rvfi_intrpt_taken) || rvfi_present_state == ST_WR_BK;
+`endif
+
+`define CSR_MACRO_OP(NAME) \
+    .rvfi_csr_``NAME``_rmask(rvfi_csr_``NAME``_rmask), \
+    .rvfi_csr_``NAME``_wmask(rvfi_csr_``NAME``_wmask), \
+    .rvfi_csr_``NAME``_rdata(rvfi_csr_``NAME``_rdata), \
+    .rvfi_csr_``NAME``_wdata(rvfi_csr_``NAME``_wdata),
 
     otter_csr csr (
         .clk(clk),
@@ -356,119 +366,98 @@ module otter_mcu #(
         .addr_vld(csr_addr_vld),
         .r_data(csr_r_data),
 
-        .mstatus(csr_mstatus),
-        .misa(csr_misa),
-        .mie(csr_mie),
-        .mtvec(csr_mtvec),
-        .mstatush(csr_mstatush),
-        .mscratch(csr_mscratch),
-        .mepc(csr_mepc),
-        .mcause(csr_mcause),
-        .mtval(csr_mtval),
-        .mip(csr_mip),
+`ifdef RISCV_FORMAL
+        .next_rvfi_valid(next_rvfi_valid),
+    `RVFI_CSR_LIST
+`endif
 
-        .mvendorid(csr_mvendorid),
-        .marchid(csr_marchid),
-        .mimpid(csr_mimpid),
-        .mhartid(csr_mhartid),
-        .mconfigptr(csr_mconfigptr)
+        .pc_mtvec_addr(pc_mtvec_addr),
+        .pc_mepc_addr(pc_mepc_addr)
     );
+
+`undef CSR_MACRO_OP
 
     //----------------------------------------------------------------------------//
     // RISC-V Formal Interface: Set of Bindings Used in Sim to Verify Correctness
     //----------------------------------------------------------------------------//
 
-    `ifdef RISCV_FORMAL
-	
-        wire next_rvfi_valid   =
-            (rvfi_present_state == ST_EXEC && rvfi_next_state != ST_WR_BK) || rvfi_present_state == ST_WR_BK;
-        wire rvfi_intrpt_taken = (csr_op_sel == CSR_OP_INTRPT);
-        wire rvfi_trap_taken   = (csr_op_sel == CSR_OP_TRAP);
-        reg  next_rvfi_intr; 
+`ifdef RISCV_FORMAL
 
-        always @(posedge clk) begin
+    wire rvfi_intrpt_taken = (csr_op_sel == CSR_OP_INTRPT);
+    wire rvfi_trap_taken   = (csr_op_sel == CSR_OP_TRAP);
+    reg  next_rvfi_intr; 
 
-            rvfi_valid <= next_rvfi_valid;
+    always @(posedge clk) begin
 
-            // set for both execute and writeback states
-            if (rvfi_present_state == ST_EXEC || rvfi_present_state == ST_WR_BK) begin
-                // rfile dest traces
-                rvfi_rd_addr   <= rfile_w_en ? rfile_w_addr : '0;
-                rvfi_rd_wdata  <= rfile_w_en ? rfile_w_data : '0;
-                rvfi_mem_rdata <= dmem_r_data;
-            end
+        rvfi_valid <= next_rvfi_valid;
 
-            // set for solely the execute state
-            if (rvfi_present_state == ST_EXEC) begin
-                next_rvfi_intr <= rvfi_trap_taken || rvfi_intrpt_taken;
-                // have a monotonically increasing counter that tracks the instruction order
-                rvfi_order <= rvfi_order + '1;
-                // current instruction fetched from memory
-                rvfi_insn <= imem_r_data;
-                // flag if next instruction is illegal
-                rvfi_trap <= dcdr_trap_taken;
-                // NOTE: rvfi_intr needs a single cycle delay befor triggering
-                // This allows it to be asserted as the first instruction of
-                // the interrupt is retired which is what the docs say to do.
-                rvfi_intr <= next_rvfi_intr;
+        // set for both execute and writeback states
+        if (rvfi_present_state == ST_EXEC || rvfi_present_state == ST_WR_BK) begin
+            // rfile dest traces
+            rvfi_rd_addr   <= rfile_w_en ? rfile_w_addr : '0;
+            rvfi_rd_wdata  <= rfile_w_en && rfile_w_addr != 0 ? rfile_w_data : '0;
+            rvfi_mem_rdata <= dmem_r_data;
+        end
 
-                // Fixed values
-                rvfi_halt <= 0; // Never Halts
-                rvfi_mode <= 3; // Machine Mode
-                rvfi_ixl  <= 1; // Always 32-bit
+        // set for solely the execute state
+        if (rvfi_present_state == ST_EXEC) begin
+            next_rvfi_intr <= rvfi_trap_taken || rvfi_intrpt_taken;
+            // have a monotonically increasing counter that tracks the instruction order
+            rvfi_order <= rvfi_order + 1;
+            // current instruction fetched from memory
+            rvfi_insn <= instrn;
+            // flag if next instruction is illegal
+            rvfi_trap <= rvfi_trap_taken;
+            // NOTE: rvfi_intr needs a single cycle delay befor triggering
+            // This allows it to be asserted as the first instruction of
+            // the interrupt is retired which is what the docs say to do.
+            rvfi_intr <= next_rvfi_intr;
 
-                // rfile sources and corresponding data
-                rvfi_rs1_addr  <= rfile_r_addr1;
-                rvfi_rs2_addr  <= rfile_r_addr2;
-                rvfi_rs1_rdata <= rfile_r_rs1;
-                rvfi_rs2_rdata <= rfile_r_rs2;
+            // Fixed values
+            rvfi_halt <= 0; // Never Halts
+            rvfi_mode <= 3; // Machine Mode
+            rvfi_ixl  <= 1; // Always 32-bit
 
-                // pc addresses
-                rvfi_pc_rdata <= pc_addr;
-                rvfi_pc_wdata <= pc_next_addr;
+            // rfile sources and corresponding data
+            rvfi_rs1_addr  <= rfile_r_addr1;
+            rvfi_rs2_addr  <= rfile_r_addr2;
+            rvfi_rs1_rdata <= rfile_r_rs1;
+            rvfi_rs2_rdata <= rfile_r_rs2;
 
-                // add checks for misaligned memory access
-                `define RISCV_FORMAL_ALIGNED_MEM
-                if (dmem_r_en || dmem_w_en) begin
-                    rvfi_mem_addr <= dmem_addr;
-                    case ({dmem_r_en, funct3})
-                        {1'b1, FUNCT3_I_LB}  : begin rvfi_mem_rmask <= 4'b 0001 << addr_load_alignment; end
-                        {1'b1, FUNCT3_I_LH}  : begin rvfi_mem_rmask <= 4'b 0011 << addr_load_alignment; end
-                        {1'b1, FUNCT3_I_LW}  : begin rvfi_mem_rmask <= 4'b 1111 << addr_load_alignment; end
-                        {1'b1, FUNCT3_I_LBU} : begin rvfi_mem_rmask <= 4'b 0001 << addr_load_alignment; end
-                        {1'b1, FUNCT3_I_LHU} : begin rvfi_mem_rmask <= 4'b 0011 << addr_load_alignment; end
-                        default: rvfi_mem_rmask <= 0;
-                    endcase
-                    rvfi_mem_wmask <= dmem_w_strb;
-                    rvfi_mem_wdata <= dmem_w_data;
-                end else begin
-                    rvfi_mem_addr  <= 0;
-                    rvfi_mem_rmask <= 0;
-                    rvfi_mem_wmask <= 0;
-                    rvfi_mem_wdata <= 0;
-                end
-            end
+            // pc addresses
+            rvfi_pc_rdata <= pc_addr;
+            rvfi_pc_wdata <= pc_next_addr;
 
-            if (rst || rvfi_present_state == ST_INIT) begin
-                next_rvfi_intr <= 0;
-                rvfi_valid <= 0;
-                rvfi_order <= 0;
-                rvfi_trap <= 0;
+            // add checks for misaligned memory access
+            `define RISCV_FORMAL_ALIGNED_MEM
+            if (dmem_r_en || dmem_w_en) begin
+                rvfi_mem_addr <= dmem_addr;
+                case ({dmem_r_en, funct3})
+                    {1'b1, FUNCT3_I_LB}  : begin rvfi_mem_rmask <= 4'b 0001 << addr_load_alignment; end
+                    {1'b1, FUNCT3_I_LH}  : begin rvfi_mem_rmask <= 4'b 0011 << addr_load_alignment; end
+                    {1'b1, FUNCT3_I_LW}  : begin rvfi_mem_rmask <= 4'b 1111 << addr_load_alignment; end
+                    {1'b1, FUNCT3_I_LBU} : begin rvfi_mem_rmask <= 4'b 0001 << addr_load_alignment; end
+                    {1'b1, FUNCT3_I_LHU} : begin rvfi_mem_rmask <= 4'b 0011 << addr_load_alignment; end
+                    default: rvfi_mem_rmask <= 0;
+                endcase
+                rvfi_mem_wmask <= dmem_w_strb;
+                rvfi_mem_wdata <= dmem_w_data;
+            end else begin
+                rvfi_mem_addr  <= 0;
+                rvfi_mem_rmask <= 0;
+                rvfi_mem_wmask <= 0;
+                rvfi_mem_wdata <= 0;
             end
         end
 
-        always @(posedge clk) begin
-            if (next_rvfi_valid) begin
-            `define CSR_MACRO_OP(NAME) \
-                rvfi_csr_``NAME``_rmask <= 32'hffff_ffff; \
-                rvfi_csr_``NAME``_wmask <= 32'hffff_ffff; \
-                rvfi_csr_``NAME``_rdata <= csr_``NAME``; \
-                rvfi_csr_``NAME``_wdata <= csr_``NAME``;
-
-                `RVFI_CSR_LIST
-            `undef CSR_MACRO_OP
-            end
+        if (rst || rvfi_present_state == ST_INIT) begin
+            next_rvfi_intr <= 0;
+            rvfi_valid <= 0;
+            rvfi_order <= 0;
+            rvfi_trap <= 0;
         end
-    `endif
+    end
+
+`endif
 
 endmodule
