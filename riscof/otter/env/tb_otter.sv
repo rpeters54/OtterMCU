@@ -57,6 +57,7 @@ module tb_otter;
     end
 
 
+    /*
     `define RISCV_FORMAL
     `ifdef RISCV_FORMAL
 
@@ -180,7 +181,7 @@ module tb_otter;
         end
     end
     `endif
-
+*/
     wire        dmem_r_en, dmem_w_en;
     wire [3:0]  dmem_w_strb;
     wire [31:0] imem_addr, dmem_addr, dmem_w_data;
@@ -197,21 +198,21 @@ module tb_otter;
     otter_mcu #(
         .RESET_VEC(RESET_VEC)
     ) mcu (
-        .clk(clk),
-        .rst(rst),
-        .intrpt(intrpt),
+        .i_clk(clk),
+        .i_rst(rst),
+        .i_intrpt(intrpt),
 
         // Instruction Memory Interface
-        .imem_r_data(imem_r_data),
-        .imem_addr(imem_addr),
+        .i_imem_r_data(imem_r_data),
+        .o_imem_addr(imem_addr),
 
         // Data Memory Interface
-        .dmem_r_data(dmem_r_data),
-        .dmem_r_en(dmem_r_en),
-        .dmem_w_en(dmem_w_en),
-        .dmem_w_strb(dmem_w_strb),
-        .dmem_addr(dmem_addr),
-        .dmem_w_data(dmem_w_data)
+        .i_dmem_r_data(dmem_r_data),
+        .o_dmem_re(dmem_r_en),
+        .o_dmem_we(dmem_w_en),
+        .o_dmem_sel(dmem_w_strb),
+        .o_dmem_addr(dmem_addr),
+        .o_dmem_w_data(dmem_w_data)
     );
     /* verilator lint_on PINMISSING */
 

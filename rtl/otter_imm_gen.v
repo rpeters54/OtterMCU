@@ -19,27 +19,34 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
+`include "otter_defines.vh"
+
 /*
 Uses concatenation to generate immediates
 {#{value}} means that value is duplicated # times in the output 
 */
 module otter_imm_gen (
-    input      [31:0] instrn,
-    output reg [31:0] upper_immed, 
-    output reg [31:0] i_type_immed, 
-    output reg [31:0] s_type_immed, 
-    output reg [31:0] branch_immed, 
-    output reg [31:0] jump_immed,
-    output reg [31:0] z_immed
+    input      [31:0] i_instrn,
+    input      [2:0]  i_imm_sel,
+
+    output reg [31:0] o_immed
 );
 
+    wire [31:0] w_upper_immed  = {i_instrn[31:12], 12'd0};
+    wire [31:0] w_i_type_immed = {{21{i_instrn[31]}}, i_instrn[30:20]};
+    wire [31:0] w_s_type_immed = {{21{i_instrn[31]}}, i_instrn[30:25], i_instrn[11:7]};
+    wire [31:0] w_branch_immed = {{20{i_instrn[31]}}, i_instrn[7], i_instrn[30:25], i_instrn[11:8], 1'd0};
+    wire [31:0] w_jump_immed   = {{12{i_instrn[31]}}, i_instrn[19:12], i_instrn[20], i_instrn[30:21], 1'd0};
+
     always @(*) begin
-        upper_immed  = {instrn[31:12], 12'd0};
-        i_type_immed = {{21{instrn[31]}}, instrn[30:20]};
-        s_type_immed = {{21{instrn[31]}}, instrn[30:25], instrn[11:7]};
-        branch_immed = {{20{instrn[31]}}, instrn[7], instrn[30:25], instrn[11:8], 1'd0};
-        jump_immed   = {{12{instrn[31]}}, instrn[19:12], instrn[20], instrn[30:21], 1'd0};
-        z_immed      = {27'd0, instrn[19:15]};
+        case (i_imm_sel)
+            IMM_GEN_SEL_UPPER  : o_immed = w_upper_immed;
+            IMM_GEN_SEL_I_TYPE : o_immed = w_i_type_immed;
+            IMM_GEN_SEL_S_TYPE : o_immed = w_s_type_immed;
+            IMM_GEN_SEL_BRANCH : o_immed = w_branch_immed;
+            IMM_GEN_SEL_JUMP   : o_immed = w_jump_immed;
+            default            : o_immed = 0;
+        endcase
     end
 
 endmodule

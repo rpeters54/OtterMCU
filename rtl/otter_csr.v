@@ -19,261 +19,249 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 `include "otter_defines.vh"
-`define CSR_MACRO_OP(NAME) \
-    output reg [31:0] rvfi_csr_``NAME``_rmask, \
-    output reg [31:0] rvfi_csr_``NAME``_wmask, \
-    output reg [31:0] rvfi_csr_``NAME``_rdata, \
-    output reg [31:0] rvfi_csr_``NAME``_wdata,
 
 module otter_csr (
-    input             clk,
-    input      [31:0] intrpt,
+    input             i_clk,
+    input             i_rst,
+    input             i_mask_intrpt,
+    input      [31:0] i_intrpt,
+    input      [3:0]  i_excp,
 
-    input      [2:0]  op_sel,
-    input      [2:0]  trap_cause_sel,
-    input      [1:0]  funct3_low,
-    input             w_en,
-    input      [11:0] addr,
-    input      [31:0] pc_addr,
-    input      [31:0] w_data,
-    input      [31:0] mtval_trap_addr,
+    input             i_csr_we,
+    input      [4:0]  i_csr_op_sel,
+    input      [1:0]  i_csr_rx_sel,
+    input      [11:0] i_csr_addr,
+    input      [31:0] i_csr_w_data,
 
-    output reg        intrpt_vld,
-    output reg        illegal_write,
-    output reg        addr_vld,
-    output reg [31:0] r_data,
+    output reg [31:0] o_csr_r_data,
+
+    input      [31:0] i_trap_pc,
+    input      [31:0] i_trap_mtval,
 
 `ifdef RISCV_FORMAL
-    input             next_rvfi_valid,
+
+`define CSR_MACRO_OP(NAME) \
+    output reg [31:0] o_``NAME``, \
+    output reg [31:0] o_``NAME``_next,
+
     `RVFI_CSR_LIST
+
+`undef CSR_MACRO_OP
+
 `endif
 
     // values used by pc mux to jump to mtvec/mepc on trap/mret
-    output reg [31:0] pc_mtvec_addr,
-    output reg [31:0] pc_mepc_addr
+    output reg [31:0] o_epc_addr,
+    output reg        o_excp,
+    output reg        o_trap
 );
 
-`undef CSR_MACRO_OP
-    // Read-Only Values (MISA treated as read-only zero)
-    localparam CSR_MVENDORID_VALUE  = 32'h0000_0000;
-    localparam CSR_MARCHID_VALUE    = 32'h0000_0000;
-    localparam CSR_MIMPID_VALUE     = 32'h0000_0000;
-    localparam CSR_MHARTID_VALUE    = 32'h0000_0000;
-    localparam CSR_MCONFIGPTR_VALUE = 32'h0000_0000;
-    localparam CSR_MISA_VALUE       = 32'h4000_0100; // RV32I + Zicsr
 
-    // All Register Masks
-    localparam CSR_MSTATUS_MASK    = 32'h0000_0088; // bit 3 = MIE and bit 7 = MPIE are writeable, remaining bits are ignored
-    localparam CSR_MSTATUSH_MASK   = 32'h0000_0000; // everything is left as default
-    localparam CSR_MIE_MASK        = 32'hFFFF_0888; // bits 31-15 = Custom IRQs, bit 11 = External IRQ, bit 7 = Timer IRQ, bit 3 = Software IRQ
-    localparam CSR_MTVEC_MASK      = 32'hFFFF_FFFD; // bit 1 must always remain zero, MODE can only be 0 = Direct, 1 = Vec
-    localparam CSR_MCAUSE_MASK     = 32'h0000_001F; // only lowest 5 bits of mcause are writeable
-    localparam CSR_MEPC_MASK       = 32'hFFFF_FFFC; // 2 lsbs of mepc are not writeable
-    localparam CSR_MTVAL_MASK      = 32'hFFFF_FFFF; // mtval is fully writeable by software
-    localparam CSR_MSCRATCH_MASK   = 32'hFFFF_FFFF; // user-defined scratch space, the world is your oyster
 
-    localparam MCAUSE_INTRPT_BIT = 1 << 31;
+    localparam MCAUSE_INTRPT_BIT   = 1 << 31;
+    localparam EPC_ADDR_MASK       = 32'hFFFF_FFFC;
 
     // temporary registers
-    reg [31:0] result;
-    reg [4:0]  intrpt_pending;
+    reg [31:0] w_result, w_mcause_excp_next;
+    reg [4:0]  w_intrpt_pending;
+    reg        w_intrpt_vld;
 
     // read-only csrs, will flag write attempts as illegal
-    wire [31:0] mvendorid  = CSR_MVENDORID_VALUE;
-    wire [31:0] marchid    = CSR_MARCHID_VALUE;
-    wire [31:0] mimpid     = CSR_MIMPID_VALUE;
-    wire [31:0] mhartid    = CSR_MHARTID_VALUE;
-    wire [31:0] mconfigptr = CSR_MCONFIGPTR_VALUE;
+    wire [31:0] w_mvendorid  = CSR_MVENDORID_VALUE;
+    wire [31:0] w_marchid    = CSR_MARCHID_VALUE;
+    wire [31:0] w_mimpid     = CSR_MIMPID_VALUE;
+    wire [31:0] w_mhartid    = CSR_MHARTID_VALUE;
+    wire [31:0] w_mconfigptr = CSR_MCONFIGPTR_VALUE;
 
-    localparam CSR_MIP_INTRPT_MASK      = 32'hFFFF_0888;
     // read-only, WARL (Ignores writes but does not trap)
-    wire [31:0] misa = CSR_MISA_VALUE;
-    wire [31:0] mip  = intrpt & CSR_MIP_INTRPT_MASK;
+    wire [31:0] w_misa       = CSR_MISA_VALUE;
 
     // trap related registers, WARL (Accepts any write, only reads legal result)
-    reg [31:0] mstatus, mie, mtvec, mstatush, mscratch,
-               mepc, mcause, mtval;
+    reg [31:0] w_mstatus, w_mie, w_mtvec, w_mstatush, w_mscratch,
+               w_mepc, w_mcause, w_mtval, w_mip;
 
-    reg [31:0] mstatus_next, mie_next, mtvec_next, mstatush_next,
-               mscratch_next, mepc_next, mcause_next, mtval_next;
-
+    reg [31:0] w_mstatus_next, w_mie_next, w_mtvec_next, w_mstatush_next,
+               w_mscratch_next, w_mepc_next, w_mcause_next, w_mtval_next, w_mip_next;
 
     // latch writeable csr updates each cycle
-    always @(posedge clk) begin
-        mstatus  <= mstatus_next;
-        mie      <= mie_next;
-        mtvec    <= mtvec_next;
-        mstatush <= mstatush_next;
-        mscratch <= mscratch_next;
-        mepc     <= mepc_next;
-        mcause   <= mcause_next;
-        mtval    <= mtval_next;
-    end
-
-    always @(*) begin
-
-        mstatus_next  = mstatus;
-        mie_next      = mie;
-        mtvec_next    = mtvec;
-        mstatush_next = mstatush;
-        mscratch_next = mscratch;
-        mepc_next     = mepc;
-        mcause_next   = mcause;
-        mtval_next    = mtval;
-
-        pc_mepc_addr  = mepc;
-        pc_mtvec_addr = mtvec & 32'hFFFF_FFFC;
-
-        //reset all writable registers to zero
-        case (op_sel)
-            CSR_OP_RESET : begin
-                mstatus_next  = 0;
-                mie_next      = 0;
-                mtvec_next    = 0;
-                mstatush_next = 0;
-                mscratch_next = 0;
-                mepc_next     = 0;
-                mcause_next   = 0;
-                mtval_next    = 0;
-            end
-            CSR_OP_WRITE : begin
-                // writeback csr instruction changes if enabled
-                if (w_en) begin
-                    case (addr) 
-                        CSR_MSTATUS_ADDR  : mstatus_next  = (result & CSR_MSTATUS_MASK)  | (mstatus  & ~CSR_MSTATUS_MASK);
-                        CSR_MIE_ADDR      : mie_next      = (result & CSR_MIE_MASK)      | (mie      & ~CSR_MIE_MASK);
-                        CSR_MTVEC_ADDR    : mtvec_next    = (result & CSR_MTVEC_MASK)    | (mtvec    & ~CSR_MTVEC_MASK);
-                        CSR_MSTATUSH_ADDR : mstatush_next = (result & CSR_MSTATUSH_MASK) | (mstatush & ~CSR_MSTATUSH_MASK);
-                        CSR_MSCRATCH_ADDR : mscratch_next = (result & CSR_MSCRATCH_MASK) | (mscratch & ~CSR_MSCRATCH_MASK);
-                        CSR_MEPC_ADDR     : mepc_next     = (result & CSR_MEPC_MASK)     | (mepc     & ~CSR_MEPC_MASK);
-                        CSR_MCAUSE_ADDR   : mcause_next   = (result & CSR_MCAUSE_MASK)   | (mcause   & ~CSR_MCAUSE_MASK);
-                        CSR_MTVAL_ADDR    : mtval_next    = (result & CSR_MTVAL_MASK)    | (mtval    & ~CSR_MTVAL_MASK);
-                        default           : ;
-                    endcase
-                end
-            end
-            CSR_OP_ECALL : begin
-                mepc_next       = pc_addr;
-                mcause_next     = MCAUSE_CODE_ECALL_M_MODE;
-                mstatus_next[7] = mstatus[3];
-                mstatus_next[3] = 0;
-            end
-            CSR_OP_EBREAK : begin
-                mepc_next       = pc_addr;
-                mcause_next     = MCAUSE_CODE_BREAKPOINT;
-                mstatus_next[7] = mstatus[3];
-                mstatus_next[3] = 0;
-                mtval_next      = mtval_trap_addr;
-            end
-            CSR_OP_MRET : begin
-                mcause_next     = 0;
-                mstatus_next[3] = mstatus[7];
-                mstatus_next[7] = 1;
-            end
-            CSR_OP_INTRPT : begin
-                mepc_next       = pc_addr;
-                mcause_next     = MCAUSE_INTRPT_BIT | {27'd0, intrpt_pending};
-                mstatus_next[7] = mstatus[3];
-                mstatus_next[3] = 0;
-
-                // if vectored interrupts are enabled, adjust mtvec jump location
-                if (mtvec[1]) begin
-                    pc_mtvec_addr = mtvec & 32'hFFFF_FFFC + { 25'd0, intrpt_pending, 2'd0 };
-                end
-            end
-            CSR_OP_TRAP : begin
-                mepc_next       = pc_addr;
-                mstatus_next[7] = mstatus[3];
-                mstatus_next[3] = 0;
-                mtval_next      = mtval_trap_addr;
-                case (trap_cause_sel)
-                    TRAP_CAUSE_SEL_INSTRN_ADDR_MISALIGN : mcause_next = MCAUSE_CODE_INSTRN_ADDR_MISALIGN;
-                    TRAP_CAUSE_SEL_INVLD_INSTRN         : mcause_next = MCAUSE_CODE_INVLD_INSTRN;
-                    TRAP_CAUSE_SEL_LOAD_ADDR_MISALIGN   : mcause_next = MCAUSE_CODE_LOAD_ADDR_MISALIGN;
-                    TRAP_CAUSE_SEL_STORE_ADDR_MISALIGN  : mcause_next = MCAUSE_CODE_STORE_ADDR_MISALIGN;
-                    default                             : ;
-                endcase
-            end
-            CSR_OP_WFI : ; // nop
-            default : ;
-        endcase
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            w_mstatus  <= 0;
+            w_mie      <= 0;
+            w_mtvec    <= 0;
+            w_mstatush <= 0;
+            w_mscratch <= 0;
+            w_mepc     <= 0;
+            w_mcause   <= 0;
+            w_mtval    <= 0;
+            w_mip      <= 0;
+        end else begin
+            w_mstatus  <= w_mstatus_next;
+            w_mie      <= w_mie_next;
+            w_mtvec    <= w_mtvec_next;
+            w_mstatush <= w_mstatush_next;
+            w_mscratch <= w_mscratch_next;
+            w_mepc     <= w_mepc_next;
+            w_mcause   <= w_mcause_next;
+            w_mtval    <= w_mtval_next;
+            w_mip      <= w_mip_next;
+        end
     end
 
     // external interrupt check
     // if interrupts are globally enabled (mstatus[3] == 1)
     // and mie and mip have the same interrupt bit set, take it
     always @(*) begin
-        intrpt_vld     =  0;
-        intrpt_pending = '0;
+        w_intrpt_vld     = 0;
+        w_intrpt_pending = 0;
 
-        if (mstatus[3] && (|(mie & mip))) begin
+        if (w_mstatus[3] && (|(w_mie & w_mip))) begin
             // user defined interrupts
-            if      (intrpt[31]) intrpt_pending = 5'd31;
-            else if (intrpt[30]) intrpt_pending = 5'd30;
-            else if (intrpt[29]) intrpt_pending = 5'd29;
-            else if (intrpt[28]) intrpt_pending = 5'd28;
-            else if (intrpt[27]) intrpt_pending = 5'd27;
-            else if (intrpt[26]) intrpt_pending = 5'd26;
-            else if (intrpt[25]) intrpt_pending = 5'd25;
-            else if (intrpt[24]) intrpt_pending = 5'd24;
-            else if (intrpt[23]) intrpt_pending = 5'd23;
-            else if (intrpt[22]) intrpt_pending = 5'd22;
-            else if (intrpt[21]) intrpt_pending = 5'd21;
-            else if (intrpt[20]) intrpt_pending = 5'd20;
-            else if (intrpt[19]) intrpt_pending = 5'd19;
-            else if (intrpt[18]) intrpt_pending = 5'd18;
-            else if (intrpt[17]) intrpt_pending = 5'd17;
-            else if (intrpt[16]) intrpt_pending = 5'd16;
+            if      (i_intrpt[31]) w_intrpt_pending = 5'd31;
+            else if (i_intrpt[30]) w_intrpt_pending = 5'd30;
+            else if (i_intrpt[29]) w_intrpt_pending = 5'd29;
+            else if (i_intrpt[28]) w_intrpt_pending = 5'd28;
+            else if (i_intrpt[27]) w_intrpt_pending = 5'd27;
+            else if (i_intrpt[26]) w_intrpt_pending = 5'd26;
+            else if (i_intrpt[25]) w_intrpt_pending = 5'd25;
+            else if (i_intrpt[24]) w_intrpt_pending = 5'd24;
+            else if (i_intrpt[23]) w_intrpt_pending = 5'd23;
+            else if (i_intrpt[22]) w_intrpt_pending = 5'd22;
+            else if (i_intrpt[21]) w_intrpt_pending = 5'd21;
+            else if (i_intrpt[20]) w_intrpt_pending = 5'd20;
+            else if (i_intrpt[19]) w_intrpt_pending = 5'd19;
+            else if (i_intrpt[18]) w_intrpt_pending = 5'd18;
+            else if (i_intrpt[17]) w_intrpt_pending = 5'd17;
+            else if (i_intrpt[16]) w_intrpt_pending = 5'd16;
             // M-mode interrupts
-            else if (intrpt[11]) intrpt_pending = 5'd11;
-            else if (intrpt[7])  intrpt_pending = 5'd7;
-            else if (intrpt[3])  intrpt_pending = 5'd3;
-            else                 intrpt_pending = 5'd0;
+            else if (i_intrpt[11]) w_intrpt_pending = 5'd11;
+            else if (i_intrpt[7])  w_intrpt_pending = 5'd7;
+            else if (i_intrpt[3])  w_intrpt_pending = 5'd3;
+            else                   w_intrpt_pending = 5'd0;
 
-            intrpt_vld = 1;
+            w_intrpt_vld = 1;
         end
     end
 
-
-    // csr combinational read
-    // notifies decoder about illegal reads (addr_vld == 0)
     always @(*) begin
-        illegal_write  = 1;
-        addr_vld       = 0;
-        r_data         = 0;
+        w_mstatus_next  = w_mstatus;
+        w_mie_next      = w_mie;
+        w_mtvec_next    = w_mtvec;
+        w_mstatush_next = w_mstatush;
+        w_mscratch_next = w_mscratch;
+        w_mepc_next     = w_mepc;
+        w_mcause_next   = w_mcause;
+        w_mtval_next    = w_mtval;
+        w_mip_next      = w_mip | (i_intrpt & CSR_MIP_MASK);
+        w_result        = 0;
 
-        case (addr)
-            CSR_MVENDORID_ADDR : begin r_data = mvendorid;  addr_vld = 1; end
-            CSR_MARCHID_ADDR   : begin r_data = marchid;    addr_vld = 1; end
-            CSR_MIMPID_ADDR    : begin r_data = mimpid;     addr_vld = 1; end
-            CSR_MHARTID_ADDR   : begin r_data = mhartid;    addr_vld = 1; end
-            CSR_MCONFIGPTR_ADDR: begin r_data = mconfigptr; addr_vld = 1; end
+        o_epc_addr      = (w_mtvec & EPC_ADDR_MASK);
+        o_excp          = 0;
+        o_trap          = 0;
 
-            CSR_MSTATUS_ADDR   : begin r_data = mstatus;    illegal_write = 0; addr_vld = 1; end
-            CSR_MISA_ADDR      : begin r_data = misa;       illegal_write = 0; addr_vld = 1; end
-            CSR_MIE_ADDR       : begin r_data = mie;        illegal_write = 0; addr_vld = 1; end
-            CSR_MTVEC_ADDR     : begin r_data = mtvec;      illegal_write = 0; addr_vld = 1; end
-            CSR_MSTATUSH_ADDR  : begin r_data = mstatush;   illegal_write = 0; addr_vld = 1; end
-            CSR_MSCRATCH_ADDR  : begin r_data = mscratch;   illegal_write = 0; addr_vld = 1; end
-            CSR_MEPC_ADDR      : begin r_data = mepc;       illegal_write = 0; addr_vld = 1; end
-            CSR_MCAUSE_ADDR    : begin r_data = mcause;     illegal_write = 0; addr_vld = 1; end
-            CSR_MTVAL_ADDR     : begin r_data = mtval;      illegal_write = 0; addr_vld = 1; end
-            CSR_MIP_ADDR       : begin r_data = mip;        illegal_write = 0; addr_vld = 1; end
-            default: begin
-                r_data         = 0;
-                addr_vld       = 0;
-                illegal_write  = 1;
+        if (i_rst) begin
+            // NOP
+        end else if (w_intrpt_vld && !i_mask_intrpt) begin
+            w_mip_next        = 0;
+            w_mepc_next       = i_trap_pc;
+            w_mcause_next     = MCAUSE_INTRPT_BIT | {27'd0, w_intrpt_pending};
+            w_mstatus_next[7] = w_mstatus[3];
+            w_mstatus_next[3] = 0;
+            o_excp            = 1;
+            // if vectored interrupts are enabled, update epc
+            if (w_mtvec[1]) begin
+                o_epc_addr = (w_mtvec & EPC_ADDR_MASK) + { 25'd0, w_intrpt_pending, 2'd0 };
             end
+        end else if (|i_excp) begin
+            w_mepc_next       = i_trap_pc;
+            w_mcause_next     = w_mcause_excp_next;
+            w_mtval_next      = i_trap_mtval;
+            w_mstatus_next[7] = w_mstatus[3];
+            w_mstatus_next[3] = 0;
+            o_trap            = 1;
+        end else begin
+            case (i_csr_op_sel)
+                CSR_OP_SEL_WRITE : begin
+                    if (i_csr_we) begin
+                        case (i_csr_rx_sel)
+                            CSR_FUNCT3_LOW_RW : w_result = i_csr_w_data;
+                            CSR_FUNCT3_LOW_RS : w_result = o_csr_r_data |  i_csr_w_data;
+                            CSR_FUNCT3_LOW_RC : w_result = o_csr_r_data & ~i_csr_w_data;
+                            default   : ;
+                        endcase
+                        case (i_csr_addr)
+                            CSR_MSTATUS_ADDR  : w_mstatus_next  = (w_result & CSR_MSTATUS_MASK)  | (w_mstatus  & ~CSR_MSTATUS_MASK);
+                            CSR_MIE_ADDR      : w_mie_next      = (w_result & CSR_MIE_MASK)      | (w_mie      & ~CSR_MIE_MASK);
+                            CSR_MTVEC_ADDR    : w_mtvec_next    = (w_result & CSR_MTVEC_MASK)    | (w_mtvec    & ~CSR_MTVEC_MASK);
+                            CSR_MSTATUSH_ADDR : w_mstatush_next = (w_result & CSR_MSTATUSH_MASK) | (w_mstatush & ~CSR_MSTATUSH_MASK);
+                            CSR_MSCRATCH_ADDR : w_mscratch_next = (w_result & CSR_MSCRATCH_MASK) | (w_mscratch & ~CSR_MSCRATCH_MASK);
+                            CSR_MEPC_ADDR     : w_mepc_next     = (w_result & CSR_MEPC_MASK)     | (w_mepc     & ~CSR_MEPC_MASK);
+                            CSR_MCAUSE_ADDR   : w_mcause_next   = (w_result & CSR_MCAUSE_MASK)   | (w_mcause   & ~CSR_MCAUSE_MASK);
+                            CSR_MTVAL_ADDR    : w_mtval_next    = (w_result & CSR_MTVAL_MASK)    | (w_mtval    & ~CSR_MTVAL_MASK);
+                            CSR_MIP_ADDR      : w_mip_next      = (w_result & CSR_MIP_MASK)      | (w_mip      & ~CSR_MIP_MASK);
+                            default           : ; // writes to read-only CSRs are ignored
+                        endcase
+                    end
+                end
+                CSR_OP_SEL_ECALL : begin
+                    w_mepc_next       = i_trap_pc;
+                    w_mcause_next     = MCAUSE_CODE_ECALL_M_MODE;
+                    w_mstatus_next[7] = w_mstatus[3];
+                    w_mstatus_next[3] = 0;
+                    o_trap            = 1;
+                end
+                CSR_OP_SEL_EBREAK : begin
+                    w_mepc_next       = i_trap_pc;
+                    w_mcause_next     = MCAUSE_CODE_BREAKPOINT;
+                    w_mstatus_next[7] = w_mstatus[3];
+                    w_mstatus_next[3] = 0;
+                    w_mtval_next      = i_trap_mtval;
+                    o_trap            = 1;
+                end
+                CSR_OP_SEL_MRET : begin
+                    w_mstatus_next[3] = w_mstatus[7];
+                    w_mstatus_next[7] = 1;
+                    o_epc_addr        = w_mepc;
+                    o_trap            = 1;
+                end
+                CSR_OP_SEL_WFI : ;
+                default: ;
+            endcase
+        end
+    end
+
+    always @(*) begin
+        w_mcause_excp_next = 0;
+        case (i_excp)
+            MCAUSE_SEL_INVLD_INSTRN         : w_mcause_excp_next = MCAUSE_CODE_INVLD_INSTRN;
+            MCAUSE_SEL_INSTRN_ADDR_MISALIGN : w_mcause_excp_next = MCAUSE_CODE_INSTRN_ADDR_MISALIGN;
+            MCAUSE_SEL_STORE_ADDR_MISALIGN  : w_mcause_excp_next = MCAUSE_CODE_STORE_ADDR_MISALIGN;
+            MCAUSE_SEL_LOAD_ADDR_MISALIGN   : w_mcause_excp_next = MCAUSE_CODE_LOAD_ADDR_MISALIGN;
+            default                         : ;
         endcase
     end
 
-    // CSRxx instruction ALU
+    // csr combinational read
     always @(*) begin
-        case (funct3_low) 
-            CSR_FUNCT3_LOW_RW : result = w_data;
-            CSR_FUNCT3_LOW_RS : result = r_data |  w_data;
-            CSR_FUNCT3_LOW_RC : result = r_data & ~w_data;
-            default           : result = '0;
+        o_csr_r_data = 0;
+        case (i_csr_addr)
+            CSR_MVENDORID_ADDR : o_csr_r_data = w_mvendorid;
+            CSR_MARCHID_ADDR   : o_csr_r_data = w_marchid;
+            CSR_MIMPID_ADDR    : o_csr_r_data = w_mimpid;
+            CSR_MHARTID_ADDR   : o_csr_r_data = w_mhartid;
+            CSR_MCONFIGPTR_ADDR: o_csr_r_data = w_mconfigptr;
+
+            CSR_MSTATUS_ADDR   : o_csr_r_data = w_mstatus;
+            CSR_MISA_ADDR      : o_csr_r_data = w_misa;
+            CSR_MIE_ADDR       : o_csr_r_data = w_mie;
+            CSR_MTVEC_ADDR     : o_csr_r_data = w_mtvec;
+            CSR_MSTATUSH_ADDR  : o_csr_r_data = w_mstatush;
+            CSR_MSCRATCH_ADDR  : o_csr_r_data = w_mscratch;
+            CSR_MEPC_ADDR      : o_csr_r_data = w_mepc;
+            CSR_MCAUSE_ADDR    : o_csr_r_data = w_mcause;
+            CSR_MTVAL_ADDR     : o_csr_r_data = w_mtval;
+            CSR_MIP_ADDR       : o_csr_r_data = w_mip;
+            default            : ;
         endcase
     end
 
@@ -282,140 +270,50 @@ module otter_csr (
 
     // dummy next registers to conform to rvfi format,
     // not needed outside of formal
-    wire [31:0] mvendorid_next  = mvendorid;
-    wire [31:0] marchid_next    = marchid;
-    wire [31:0] mimpid_next     = mimpid;
-    wire [31:0] mhartid_next    = mhartid;
-    wire [31:0] mconfigptr_next = mconfigptr;
+    wire [31:0] w_mvendorid_next  = w_mvendorid;
+    wire [31:0] w_marchid_next    = w_marchid;
+    wire [31:0] w_mimpid_next     = w_mimpid;
+    wire [31:0] w_mhartid_next    = w_mhartid;
+    wire [31:0] w_mconfigptr_next = w_mconfigptr;
 
-    wire [31:0] misa_next       = misa;
-    wire [31:0] mip_next        = mip;
+    wire [31:0] w_misa_next       = w_misa;
 
-    // present csr values for rvfi
-    always @(posedge clk) begin
-        if (next_rvfi_valid) begin
-        `define CSR_MACRO_OP(NAME) \
-            rvfi_csr_``NAME``_rmask <= 32'hffff_ffff; \
-            rvfi_csr_``NAME``_wmask <= 32'hffff_ffff; \
-            rvfi_csr_``NAME``_rdata <= ``NAME``; \
-            rvfi_csr_``NAME``_wdata <= ``NAME``_next;
+    always @(*) begin
 
-            `RVFI_CSR_LIST
-        `undef CSR_MACRO_OP
-            if (w_en) begin
-                case (addr)
-                    CSR_MVENDORID_ADDR : rvfi_csr_mvendorid_wdata  <= result;
-                    CSR_MARCHID_ADDR   : rvfi_csr_marchid_wdata    <= result;
-                    CSR_MIMPID_ADDR    : rvfi_csr_mimpid_wdata     <= result;
-                    CSR_MHARTID_ADDR   : rvfi_csr_mhartid_wdata    <= result;
-                    CSR_MCONFIGPTR_ADDR: rvfi_csr_mconfigptr_wdata <= result;
+// attach signal monitors for the csr values if riscv-formal is active
+`define CSR_MACRO_OP(NAME) \
+    o_``NAME``      = w_``NAME``; \
+    o_``NAME``_next = w_``NAME``_next;
 
-                    CSR_MSTATUS_ADDR   : rvfi_csr_mstatus_wdata    <= result;
-                    CSR_MISA_ADDR      : rvfi_csr_misa_wdata       <= result;
-                    CSR_MIE_ADDR       : rvfi_csr_mie_wdata        <= result;
-                    CSR_MTVEC_ADDR     : rvfi_csr_mtvec_wdata      <= result;
-                    CSR_MSTATUSH_ADDR  : rvfi_csr_mstatush_wdata   <= result;
-                    CSR_MSCRATCH_ADDR  : rvfi_csr_mscratch_wdata   <= result;
-                    CSR_MEPC_ADDR      : rvfi_csr_mepc_wdata       <= result;
-                    CSR_MCAUSE_ADDR    : rvfi_csr_mcause_wdata     <= result;
-                    CSR_MTVAL_ADDR     : rvfi_csr_mtval_wdata      <= result;
-                    CSR_MIP_ADDR       : rvfi_csr_mip_wdata        <= result;
-                    default            : ;
-                endcase
-            end
+        `RVFI_CSR_LIST
+
+`undef CSR_MACRO_OP
+
+        // special case when writing to a csr
+        if (!i_rst && !(w_intrpt_vld && !i_mask_intrpt) && !|i_excp && i_csr_op_sel == CSR_OP_SEL_WRITE) begin
+            case (i_csr_addr)
+                CSR_MVENDORID_ADDR : o_mvendorid_next  = w_result;
+                CSR_MARCHID_ADDR   : o_marchid_next    = w_result;
+                CSR_MIMPID_ADDR    : o_mimpid_next     = w_result;
+                CSR_MHARTID_ADDR   : o_mhartid_next    = w_result;
+                CSR_MCONFIGPTR_ADDR: o_mconfigptr_next = w_result;
+
+                CSR_MSTATUS_ADDR   : o_mstatus_next    = w_result;
+                CSR_MISA_ADDR      : o_misa_next       = w_result;
+                CSR_MIE_ADDR       : o_mie_next        = w_result;
+                CSR_MTVEC_ADDR     : o_mtvec_next      = w_result;
+                CSR_MSTATUSH_ADDR  : o_mstatush_next   = w_result;
+                CSR_MSCRATCH_ADDR  : o_mscratch_next   = w_result;
+                CSR_MEPC_ADDR      : o_mepc_next       = w_result;
+                CSR_MCAUSE_ADDR    : o_mcause_next     = w_result;
+                CSR_MTVAL_ADDR     : o_mtval_next      = w_result;
+                CSR_MIP_ADDR       : o_mip_next        = w_result;
+                default            : ;
+            endcase
         end
     end
 
 `endif
 
-`ifdef FORMAL
-    reg f_past_valid;
-    reg f_past_rst;
-    reg f_past_w_en;
-    reg f_past_ext_intrpt;
 
-    // Registers to hold previous cycle's inputs/state for assertions
-    reg [2:0]  f_past_op;
-    reg [31:0] f_past_mstatus;
-    reg [31:0] f_past_misa;
-    reg [31:0] f_past_pc_addr;
-    reg [31:0] f_past_addr;
-
-    initial begin
-        f_past_valid = 0;
-        f_past_rst = 0;
-        f_past_w_en = 0;
-        f_past_ext_intrpt = 0;
-        f_past_op = 0;
-        f_past_mstatus = 0;
-        f_past_misa = 0;
-        f_past_pc_addr = 0;
-    end
-
-    always @(posedge clk) begin
-        f_past_valid   <= 1;
-        f_past_rst     <= rst;
-        f_past_w_en    <= w_en;
-        f_past_ext_intrpt <= ext_intrpt;
-        f_past_op      <= op;
-        f_past_mstatus <= mstatus;
-        f_past_misa    <= misa;
-        f_past_pc_addr <= pc_addr;
-        f_past_addr    <= addr;
-    end
-
-    // --- Assumptions ---
-    always @(*) begin
-        // Assume reset is asserted at the beginning
-        if (!f_past_valid) assume(rst);
-    end
-
-    // --- Assertions ---
-    always @(posedge clk) begin
-        if (!rst && !f_past_rst && f_past_valid) begin
-            // Property: MISA is read-only and must never change its value after reset.
-            A_MISA_READ_ONLY: assert(misa == f_past_misa);
-
-            // Property: On an ECALL, mepc, mcause, and mstatus must be updated correctly.
-            if (f_past_op == CSR_OP_ECALL) begin
-                A_ECALL_MEPC:   assert(mepc == f_past_pc_addr);
-                A_ECALL_MCAUSE: assert(mcause == MCAUSE_ECALL_M_MODE);
-                A_ECALL_MSTATUS:assert(mstatus[3] == 1'b0 && mstatus[7] == f_past_mstatus[3]);
-            end
-
-            // Property: On an MRET, the mstatus interrupt stack must be popped correctly.
-            if (f_past_op == CSR_OP_MRET) begin
-                A_MRET_MSTATUS: assert(mstatus[3] == f_past_mstatus[7] && mstatus[7] == 1'b1);
-            end
-
-            // Property: On an interrupt, mepc, mcause, and mstatus must be updated correctly.
-            if (f_past_op == CSR_OP_INTRPT) begin
-                A_INTRPT_MEPC:   assert(mepc == f_past_pc_addr);
-                A_INTRPT_MCAUSE: assert(mcause == 1 << 31 | CSR_MEIE_BIT);
-                A_INTRPT_MSTATUS:assert(mstatus[3] == 1'b0 && mstatus[7] == f_past_mstatus[3]);
-            end
-
-            // Property: A CSR write to MIP must not affect the MEIP bit (11).
-            // It must always reflect the value of ext_intrpt from the previous cycle.
-            if (f_past_op == CSR_OP_WRITE && f_past_w_en && f_past_addr == CSR_MIP_ADDR) begin
-                A_MIP_MEIP_READ_ONLY: assert(mip[11] == f_past_ext_intrpt);
-            end
-        end
-    end
-
-    // Combinational Assertions
-    always @(*) begin
-        // Property: The intrpt_vld signal must correctly reflect the interrupt status.
-        A_INTRPT_VLD_LOGIC: assert(intrpt_vld == (mstatus[3] && (|(mie & mip))));
-    end
-
-    // --- Coverage Checks ---
-    always @(posedge clk) begin
-        if (!rst) begin
-            C_ECALL: cover(op == CSR_OP_ECALL);
-            C_MRET:  cover(op == CSR_OP_MRET);
-            C_IRQ:   cover(op == CSR_OP_INTRPT);
-        end
-    end
-`endif
 endmodule

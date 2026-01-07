@@ -5,6 +5,7 @@
     // INSTRN Defines
     //----------------//
 
+    `define INSTRN_CSR_ADDR(instrn)   (instrn[31:20])
     `define INSTRN_CSR(instrn)        (instrn[31:20])
     `define INSTRN_MEM_SIZE(instrn)   (instrn[13:12])
     `define INSTRN_MEM_SIGN(instrn)   (instrn[14])
@@ -88,31 +89,85 @@
     localparam FUNCT7_RS2_SYS_ECALL  = 12'h000;
     localparam FUNCT7_RS2_SYS_EBREAK = 12'h001;
     localparam FUNCT7_RS2_SYS_MRET   = 12'h302;
-    localparam FUNCT7_RS2_SYS_WFI    = 12'h205;
+    localparam FUNCT7_RS2_SYS_WFI    = 12'h105;
+
+    localparam DCDR_OP_SEL_REG     = 15'h0001;
+    localparam DCDR_OP_SEL_IMM     = 15'h0002;
+    localparam DCDR_OP_SEL_JALR    = 15'h0004;
+    localparam DCDR_OP_SEL_LOAD    = 15'h0008;
+    localparam DCDR_OP_SEL_STORE   = 15'h0010;
+    localparam DCDR_OP_SEL_BRANCH  = 15'h0020;
+    localparam DCDR_OP_SEL_LUI     = 15'h0040;
+    localparam DCDR_OP_SEL_AUIPC   = 15'h0080;
+    localparam DCDR_OP_SEL_JAL     = 15'h0100;
+    localparam DCDR_OP_SEL_FENCE   = 15'h0200;
+    localparam DCDR_OP_SEL_WRITE   = 15'h0400;
+    localparam DCDR_OP_SEL_ECALL   = 15'h0800;
+    localparam DCDR_OP_SEL_EBREAK  = 15'h1000;
+    localparam DCDR_OP_SEL_MRET    = 15'h2000;
+    localparam DCDR_OP_SEL_WFI     = 15'h4000;
+
+    localparam DCDR_OP_REG_IDX     = 'd0;
+    localparam DCDR_OP_IMM_IDX     = 'd1;
+    localparam DCDR_OP_JALR_IDX    = 'd2;
+    localparam DCDR_OP_LOAD_IDX    = 'd3;
+    localparam DCDR_OP_STORE_IDX   = 'd4;
+    localparam DCDR_OP_BRANCH_IDX  = 'd5;
+    localparam DCDR_OP_LUI_IDX     = 'd6;
+    localparam DCDR_OP_AUIPC_IDX   = 'd7;
+    localparam DCDR_OP_JAL_IDX     = 'd8;
+    localparam DCDR_OP_FENCE_IDX   = 'd9;
+    localparam DCDR_OP_WRITE_IDX   = 'd10;
+    localparam DCDR_OP_ECALL_IDX   = 'd11;
+    localparam DCDR_OP_EBREAK_IDX  = 'd12;
+    localparam DCDR_OP_MRET_IDX    = 'd13;
+    localparam DCDR_OP_WFI_IDX     = 'd14;
+
+    localparam DCDR_EXCP_SEL_ILLEGAL = 4'h1;
+    localparam DCDR_EXCP_SEL_JUMP    = 4'h2;
+    localparam DCDR_EXCP_SEL_STORE   = 4'h4;
+    localparam DCDR_EXCP_SEL_LOAD    = 4'h8;
+
+    localparam DCDR_EXCP_ILLEGAL_IDX = 'd0;
+    localparam DCDR_EXCP_JUMP_IDX    = 'd1;
+    localparam DCDR_EXCP_STORE_IDX   = 'd2;
+    localparam DCDR_EXCP_LOAD_IDX    = 'd3;
+
+    `define DCDR_OP_CSR_BITS(dcdr_op) (dcdr_op[14:10])
+
+    localparam CSR_OP_SEL_WRITE   = 5'h01;
+    localparam CSR_OP_SEL_ECALL   = 5'h02;
+    localparam CSR_OP_SEL_EBREAK  = 5'h04;
+    localparam CSR_OP_SEL_MRET    = 5'h08;
+    localparam CSR_OP_SEL_WFI     = 5'h10;
+
+    localparam CSR_OP_WRITE_IDX   = 'd0;
+    localparam CSR_OP_SECALL_IDX  = 'd1;
+    localparam CSR_OP_EBREAK_IDX  = 'd2;
+    localparam CSR_OP_MRET_IDX    = 'd3;
+    localparam CSR_OP_WFI_IDX     = 'd4;
 
     //--------------//
     // ALU Defines
     //--------------//
 
-    localparam ALU_ADD  = 4'b0000;
-    localparam ALU_SUB  = 4'b1000;
-    localparam ALU_OR   = 4'b0110;
-    localparam ALU_AND  = 4'b0111;
-    localparam ALU_XOR  = 4'b0100;
-    localparam ALU_SRL  = 4'b0101;
-    localparam ALU_SLL  = 4'b0001;
-    localparam ALU_SRA  = 4'b1101;
-    localparam ALU_SLT  = 4'b0010;
-    localparam ALU_SLTU = 4'b0011;
-    localparam ALU_LUI  = 4'b1001;
+    localparam ALU_FUNC_SEL_ADD  = 4'd0;
+    localparam ALU_FUNC_SEL_SUB  = 4'd1;
+    localparam ALU_FUNC_SEL_OR   = 4'd2;
+    localparam ALU_FUNC_SEL_AND  = 4'd3;
+    localparam ALU_FUNC_SEL_XOR  = 4'd4;
+    localparam ALU_FUNC_SEL_SRL  = 4'd5;
+    localparam ALU_FUNC_SEL_SLL  = 4'd6;
+    localparam ALU_FUNC_SEL_SRA  = 4'd7;
+    localparam ALU_FUNC_SEL_SLT  = 4'd8;
+    localparam ALU_FUNC_SEL_SLTU = 4'd9;
+    localparam ALU_FUNC_SEL_LUI  = 4'd10;
 
-    localparam ALU_SRC_SEL_A_RS1       = 1'd0;
-    localparam ALU_SRC_SEL_A_UPPER_IMM = 1'd1;
+    localparam ALU_SRC_A_SEL_RS1 = 1'd0;
+    localparam ALU_SRC_A_SEL_PC  = 1'd1;
 
-    localparam ALU_SRC_SEL_B_RS2         = 2'd0;
-    localparam ALU_SRC_SEL_B_I_TYPE_IMM  = 2'd1;
-    localparam ALU_SRC_SEL_B_S_TYPE_IMM  = 2'd2;
-    localparam ALU_SRC_SEL_B_PC_ADDR     = 2'd3;
+    localparam ALU_SRC_B_SEL_RS2 = 1'd0;
+    localparam ALU_SRC_B_SEL_IMM = 1'd1;
 
     //--------------//
     // CSR Defines
@@ -137,18 +192,16 @@
     localparam CSR_MTVAL_ADDR    = 12'h343;
     localparam CSR_MIP_ADDR      = 12'h344;
 
-
 	localparam CSR_MCYCLE_ADDR    = 12'hB00;
 	localparam CSR_MINSTRET_ADDR  = 12'hB02;
 	localparam CSR_MCYCLEH_ADDR   = 12'hB80;
 	localparam CSR_MINSTRETH_ADDR = 12'hB82;
 
     // Selector for trap causes used for selecting MCAUSE
-    localparam TRAP_CAUSE_SEL_NO_TRAP              = 3'd0;
-    localparam TRAP_CAUSE_SEL_INSTRN_ADDR_MISALIGN = 3'd1;
-    localparam TRAP_CAUSE_SEL_INVLD_INSTRN         = 3'd2;
-    localparam TRAP_CAUSE_SEL_LOAD_ADDR_MISALIGN   = 3'd3;
-    localparam TRAP_CAUSE_SEL_STORE_ADDR_MISALIGN  = 3'd4;
+    localparam MCAUSE_SEL_INVLD_INSTRN         = 4'h1;
+    localparam MCAUSE_SEL_INSTRN_ADDR_MISALIGN = 4'h2;
+    localparam MCAUSE_SEL_STORE_ADDR_MISALIGN  = 4'h4;
+    localparam MCAUSE_SEL_LOAD_ADDR_MISALIGN   = 4'h8;
 
     // MCAUSE Codes
     localparam MCAUSE_CODE_INSTRN_ADDR_MISALIGN = 32'h00000000;
@@ -163,20 +216,37 @@
     localparam MCAUSE_CODE_MACHINE_EXTERNAL_INTERRUPT = 32'h8000000b;
 
     // CSR Func Selectors
-    localparam CSR_OP_WRITE  = 3'd0;
-    localparam CSR_OP_ECALL  = 3'd1;
-    localparam CSR_OP_EBREAK = 3'd2;
-    localparam CSR_OP_MRET   = 3'd3;
-    localparam CSR_OP_WFI    = 3'd4;
-    localparam CSR_OP_INTRPT = 3'd5;
-    localparam CSR_OP_TRAP   = 3'd6;
-    localparam CSR_OP_RESET  = 3'd7;
+    localparam CSR_OP_NOP    = 3'd0;
+    localparam CSR_OP_WRITE  = 3'd1;
+    localparam CSR_OP_ECALL  = 3'd2;
+    localparam CSR_OP_EBREAK = 3'd3;
+    localparam CSR_OP_MRET   = 3'd4;
+    localparam CSR_OP_WFI    = 3'd5;
 
     localparam CSR_FUNCT3_LOW_RW = 2'b01;
     localparam CSR_FUNCT3_LOW_RS = 2'b10;
     localparam CSR_FUNCT3_LOW_RC = 2'b11;
     localparam CSR_FUNCT3_HIGH_REG = 1'b0;
     localparam CSR_FUNCT3_HIGH_IMM = 1'b1;
+
+    // Read-Only Values (MISA treated as read-only zero)
+    localparam CSR_MVENDORID_VALUE  = 32'h0000_0000;
+    localparam CSR_MARCHID_VALUE    = 32'h0000_0000;
+    localparam CSR_MIMPID_VALUE     = 32'h0000_0000;
+    localparam CSR_MHARTID_VALUE    = 32'h0000_0000;
+    localparam CSR_MCONFIGPTR_VALUE = 32'h0000_0000;
+    localparam CSR_MISA_VALUE       = 32'h4000_0100; // RV32I + Zicsr
+
+    // All Register Masks
+    localparam CSR_MSTATUS_MASK    = 32'h0000_0088; // bit 3 = MIE and bit 7 = MPIE are writeable, remaining bits are ignored
+    localparam CSR_MSTATUSH_MASK   = 32'h0000_0000; // everything is left as default
+    localparam CSR_MIP_MASK        = 32'hFFFF_0888; // bits 31-15 = Custom IRQs, bit 11 = External IRQ, bit 7 = Timer IRQ, bit 3 = Software IRQ
+    localparam CSR_MIE_MASK        = 32'hFFFF_0888; // bits 31-15 = Custom IRQs, bit 11 = External IRQ, bit 7 = Timer IRQ, bit 3 = Software IRQ
+    localparam CSR_MTVEC_MASK      = 32'hFFFF_FFFD; // bit 1 must always remain zero, MODE can only be 0 = Direct, 1 = Vec
+    localparam CSR_MCAUSE_MASK     = 32'h0000_001F; // only lowest 5 bits of mcause are writeable
+    localparam CSR_MEPC_MASK       = 32'hFFFF_FFFC; // 2 lsbs of mepc are not writeable
+    localparam CSR_MTVAL_MASK      = 32'hFFFF_FFFF; // mtval is fully writeable by software
+    localparam CSR_MSCRATCH_MASK   = 32'hFFFF_FFFF; // user-defined scratch space, the world is your oyster
 
     //--------------//
     // MEM Defines
@@ -199,13 +269,28 @@
     // PC Defines
     //--------------//
 
-    localparam PC_SRC_SEL_ADDR_INC  = 3'd0;
-    localparam PC_SRC_SEL_JALR      = 3'd1;
-    localparam PC_SRC_SEL_BRANCH    = 3'd2;
-    localparam PC_SRC_SEL_JAL       = 3'd3;
-    localparam PC_SRC_SEL_MTVEC     = 3'd4;
-    localparam PC_SRC_SEL_MEPC      = 3'd5;
-    localparam PC_SRC_SEL_RESET_VEC = 3'd6;
+    localparam PC_SRC_SEL_ADDR_INC  = 2'd0;
+    localparam PC_SRC_SEL_BR_JUMP   = 2'd1;
+    localparam PC_SRC_SEL_EPC       = 2'd2;
+    localparam PC_SRC_SEL_RESET_VEC = 2'd3;
+
+    //-----------------//
+    // IMM GEN Defines
+    //-----------------//
+
+    localparam IMM_GEN_SEL_UPPER  = 3'd0;
+    localparam IMM_GEN_SEL_I_TYPE = 3'd1;
+    localparam IMM_GEN_SEL_S_TYPE = 3'd2;
+    localparam IMM_GEN_SEL_BRANCH = 3'd3;
+    localparam IMM_GEN_SEL_JUMP   = 3'd4;
+
+    //-----------------//
+    // ADDR GEN Defines
+    //-----------------//
+
+    localparam ADDR_GEN_SEL_JAL    = 2'd0;
+    localparam ADDR_GEN_SEL_BRANCH = 2'd1;
+    localparam ADDR_GEN_SEL_JALR   = 2'd2;
 
     //--------------//
     // FSM Defines

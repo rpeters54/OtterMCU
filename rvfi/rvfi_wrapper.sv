@@ -16,16 +16,16 @@ module rvfi_wrapper (
 
 `undef CSR_MACRO_OP
 
-	(* keep *) `rvformal_rand_reg [31:0] intrpt;
-	(* keep *) `rvformal_rand_reg [31:0] imem_r_data;
-	(* keep *) `rvformal_rand_reg [31:0] dmem_r_data;
+	(* keep *) `rvformal_rand_reg [31:0] w_intrpt;
+	(* keep *) `rvformal_rand_reg [31:0] w_imem_r_data;
+	(* keep *) `rvformal_rand_reg [31:0] w_dmem_r_data;
 
-	(* keep *) wire [31:0] imem_addr;
-	(* keep *) wire        dmem_r_en;
-	(* keep *) wire        dmem_w_en;
-	(* keep *) wire [ 3:0] dmem_w_strb;
-	(* keep *) wire [31:0] dmem_addr;
-	(* keep *) wire [31:0] dmem_w_data;
+	(* keep *) wire [31:0] w_imem_addr;
+	(* keep *) wire        w_dmem_re;
+	(* keep *) wire        w_dmem_we;
+	(* keep *) wire [ 3:0] w_dmem_sel;
+	(* keep *) wire [31:0] w_dmem_addr;
+	(* keep *) wire [31:0] w_dmem_w_data;
 
 
 `define CSR_MACRO_OP(NAME) \
@@ -36,22 +36,22 @@ module rvfi_wrapper (
 
     otter_mcu # (
         .RESET_VEC('0)
-    ) mcu (
-        .clk(clock),
-        .rst(reset),
-        .intrpt(intrpt),
+    ) u_otter_mcu (
+        .i_clk          (clock),
+        .i_rst          (reset),
+        .i_intrpt       (w_intrpt),
 
         `RVFI_INTERCONNECTS
 
-        .imem_r_data(imem_r_data),
-        .imem_addr(imem_addr),
+        .i_imem_r_data  (w_imem_r_data),
+        .o_imem_addr    (w_imem_addr),
 
-        .dmem_r_data(dmem_r_data),
-        .dmem_r_en(dmem_r_en),
-        .dmem_w_en(dmem_w_en),
-        .dmem_w_strb(dmem_w_strb),
-        .dmem_addr(dmem_addr),
-        .dmem_w_data(dmem_w_data)
+        .i_dmem_r_data  (w_dmem_r_data),
+        .o_dmem_re      (w_dmem_re),
+        .o_dmem_we      (w_dmem_we),
+        .o_dmem_sel     (w_dmem_sel),
+        .o_dmem_addr    (w_dmem_addr),
+        .o_dmem_w_data  (w_dmem_w_data)
     );
 
 `undef CSR_MACRO_OP
