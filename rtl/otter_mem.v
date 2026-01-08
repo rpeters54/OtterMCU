@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 module otter_mem #(
-    parameter ROM_FILE = "",
-    parameter MEM_SIZE = 2**16
+    parameter ROM_FILE   = "",
+    parameter BRAM_BYTES = 2**16
 ) (
     input              i_clk,
 
@@ -16,9 +16,9 @@ module otter_mem #(
     output reg  [31:0] o_dmem_r_data
 );
 
-    localparam MEM_EXP = $clog2(MEM_SIZE);
+    localparam MEM_EXP = $clog2(BRAM_BYTES);
 
-    reg [31:0] w_mem [0:MEM_SIZE/4-1];
+    reg [31:0] w_mem [0:BRAM_BYTES/4-1];
 
     initial begin
         if (ROM_FILE != "") begin
@@ -31,7 +31,7 @@ module otter_mem #(
         if (i_dmem_re) begin
             o_dmem_r_data <= w_mem[i_dmem_addr[MEM_EXP-1:2]];
         end
-        if (i_dmem_we && i_dmem_addr < MEM_SIZE) begin
+        if (i_dmem_we) begin
             if (i_dmem_sel[0]) w_mem[i_dmem_addr[MEM_EXP-1:2]][ 7: 0] <= i_dmem_w_data[ 7: 0];
             if (i_dmem_sel[1]) w_mem[i_dmem_addr[MEM_EXP-1:2]][15: 8] <= i_dmem_w_data[15: 8];
             if (i_dmem_sel[2]) w_mem[i_dmem_addr[MEM_EXP-1:2]][23:16] <= i_dmem_w_data[23:16];

@@ -1,5 +1,5 @@
 
-volatile int *iobus_ptr = (volatile int *) 0xFFFF0000;
+volatile int *iobus_ptr = (volatile int *) 0x00010000;
 
 void test_r_types();
 void test_i_types();

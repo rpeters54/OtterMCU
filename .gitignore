@@ -4,3 +4,4 @@
 obj_dir
 riscv-arch-test
 riscof_work
+__pycache__

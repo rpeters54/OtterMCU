@@ -1,5 +1,5 @@
 
-volatile int *iobus_ptr = (volatile int *) 0xFFFF0000;
+volatile int *iobus_ptr = (volatile int *) 0x00010000;
 
 int fib(int x);
 

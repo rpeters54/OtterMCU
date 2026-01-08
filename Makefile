@@ -32,7 +32,7 @@ CC_ARGS := -nostdlib
 CC_LINKER_SCRIPT := link.ld
 CC_SRCS := *.s *.c
 OBJCOPY := riscv32-unknown-elf-objcopy
-OBJCOPY_ARGS := -O verilog --verilog-data-width=4
+OBJCOPY_ARGS := -O verilog --verilog-data-width=4 --change-addresses -0x80000000
 
 # Formal Verification with SBY
 VERIFIER := sby

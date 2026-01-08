@@ -20,18 +20,16 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-`define RISCV_FORMAL
 `include "otter_defines.vh"
 
 module otter_soc #(
-    parameter ROM_FILE  = "",
-    parameter MEM_SIZE  = 2**16,
-    parameter RESET_VEC = 0
+    parameter ROM_FILE   = "",
+    parameter BRAM_BYTES = 2**16,
+    parameter RESET_VEC  = 0
 ) (
     input             i_clk,
     input             i_rst, 
     input      [31:0] i_intrpt, 
-    input      [31:0] i_iobus_in,
 
 `ifdef RISCV_FORMAL
 
@@ -47,9 +45,13 @@ module otter_soc #(
 
 `endif
 
-    output reg [31:0] o_iobus_out, 
+    output reg        o_iobus_re,
+    input      [31:0] i_iobus_data,
+
+    output reg        o_iobus_we,
+    output reg [3:0]  o_iobus_sel,
     output reg [31:0] o_iobus_addr,
-    output reg        o_iobus_we
+    output reg [31:0] o_iobus_data
 );
 
     //-------------------------------------------------------------------//
@@ -111,7 +113,7 @@ module otter_soc #(
 
     otter_mem #(
         .ROM_FILE(ROM_FILE),
-        .MEM_SIZE(MEM_SIZE)
+        .BRAM_BYTES(BRAM_BYTES)
     ) u_otter_mem (
         .i_clk          (i_clk),
 
@@ -137,9 +139,11 @@ module otter_soc #(
 
             w_dmem_r_data = w_dram_r_data;
 
+            o_iobus_re    = 0;
             o_iobus_we    = 0;
+            o_iobus_sel   = 0;
             o_iobus_addr  = 0;
-            o_iobus_out   = 0;
+            o_iobus_data  = 0;
         end else begin
             w_dram_re     = 0;
             w_dram_we     = 0;
@@ -147,14 +151,13 @@ module otter_soc #(
             w_dram_addr   = 0;
             w_dram_w_data = 0;
 
-            w_dmem_r_data = i_iobus_in;
+            w_dmem_r_data = i_iobus_data;
 
-            o_iobus_we         = w_dmem_we;
-            o_iobus_addr       = w_dmem_addr;
-            o_iobus_out[ 7: 0] = w_dmem_sel[0] ? w_dmem_w_data[ 7: 0] : 0;
-            o_iobus_out[15: 8] = w_dmem_sel[1] ? w_dmem_w_data[15: 8] : 0;
-            o_iobus_out[23:16] = w_dmem_sel[2] ? w_dmem_w_data[23:16] : 0;
-            o_iobus_out[31:24] = w_dmem_sel[3] ? w_dmem_w_data[31:24] : 0;
+            o_iobus_re    = w_dmem_re;
+            o_iobus_we    = w_dmem_we;
+            o_iobus_sel   = w_dmem_sel;
+            o_iobus_addr  = w_dmem_addr;
+            o_iobus_data  = w_dmem_w_data;
         end
     end
 

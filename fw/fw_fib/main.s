@@ -1,33 +1,31 @@
-.global _start
 
-_start:
-    # Initialize stack pointer
-    la sp, _stack_top
-    
-    # Copy initialized data from ROM to RAM
-    la t0, _ldata        # Source: ROM location of init data
-    la t1, _sdata        # Destination: Start of data in RAM
-    la t2, _edata        # End of data in RAM
-    
-copy_data_loop:
-    beq t1, t2, copy_data_done  # If we've reached the end, we're done
-    lw t3, 0(t0)         # Load word from ROM
-    sw t3, 0(t1)         # Store word to RAM
-    addi t0, t0, 4       # Increment source pointer
-    addi t1, t1, 4       # Increment destination pointer
-    j copy_data_loop     # Continue loop
+    .section .boot_constants
+    .align 4
+    .global tohost_addr
+    .dword 0
+    .global begin_sig_addr
+    .dword 0
+    .global end_sig_addr
+    .dword 0
 
-copy_data_done:
+
+    .section .text.init
+    .global rvtest_entry_point
+rvtest_entry_point:
+    # Initialize stack pointer (grows downward from high address)
+    la sp, _end
+    li t0, 0x100000         # 1MB stack space
+    add sp, sp, t0
+    
     # Clear BSS section (zero uninitialized variables)
-    la t0, _sbss         # Start of BSS
-    la t1, _ebss         # End of BSS
+    la t0, __bss_start
+    la t1, __bss_end
     
 clear_bss_loop:
-    beq t0, t1, clear_bss_done  # If we've reached the end, we're done
-    sw zero, 0(t0)       # Store zero
-    addi t0, t0, 4       # Increment pointer
-    j clear_bss_loop     # Continue loop
-
+    beq t0, t1, clear_bss_done
+    sw zero, 0(t0)
+    addi t0, t0, 4
+    j clear_bss_loop
 clear_bss_done:
     # Call main function
     call main
@@ -35,3 +33,4 @@ clear_bss_done:
     # If main returns, loop forever
 end_loop:
     j end_loop
+

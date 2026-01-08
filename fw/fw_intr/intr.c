@@ -1,21 +1,29 @@
-volatile int interrupt_fired_flag = 0;
 
+volatile int interrupt_fired_flag = 0;
 // A memory-mapped I/O address to signal test completion.
-#define MMIO_FINISH_ADDR (*(volatile int*)0x10000)
+volatile int *MMIO_FINISH_ADDR = (volatile int *)0x00010000;
+volatile int *INTRPT_READY     = (volatile int *)0x00020000;
+const int MIE_MASK = 0xFFFF0888;
 
 // Declaration for our assembly function that sets up the CSRs.
-void setup_interrupts();
+void setup_interrupts(int mie);
 
 int main() {
-    setup_interrupts();
+    for(unsigned int mie = 1; mie > 0; mie <<= 1) {
+        if (!(mie & MIE_MASK)) {
+            continue;
+        }
 
-    // Loop indefinitely, waiting for an interrupt to change the flag.
-    while (interrupt_fired_flag == 0);
+        setup_interrupts(mie);
 
-    // MMIO write that can easily tracked by the testbench
-    MMIO_FINISH_ADDR = 1;
+        *INTRPT_READY = mie;
 
-    while(1);
+        while (interrupt_fired_flag == 0);
 
-    return 0;
+        *MMIO_FINISH_ADDR = mie;
+
+        interrupt_fired_flag = 0;
+    }
+
+    for(;;);
 }

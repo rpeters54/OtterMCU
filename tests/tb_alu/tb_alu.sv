@@ -20,10 +20,10 @@ module tb_alu;
 
     // Instantiate the ALU
     otter_alu dut (
-        .src_a(src_a),
-        .src_b(src_b),
-        .func(func),
-        .result(result)
+        .i_src_a(src_a),
+        .i_src_b(src_b),
+        .i_func(func),
+        .o_result(result)
     );
 
     initial begin
@@ -65,7 +65,7 @@ module tb_alu;
 
         // Test ADD function
         $display("\n--- Testing ADD Function ---");
-        func = ALU_ADD;
+        func = ALU_FUNC_SEL_ADD;
         
         // Basic addition
         src_a = 32'h12345678; src_b = 32'h87654321; expected = 32'h99999999;
@@ -85,7 +85,7 @@ module tb_alu;
 
         // Test SUB function
         $display("\n--- Testing SUB Function ---");
-        func = ALU_SUB;
+        func = ALU_FUNC_SEL_SUB;
         
         // Basic subtraction
         src_a = 32'h87654321; src_b = 32'h12345678; expected = 32'h7530ECA9;
@@ -105,7 +105,7 @@ module tb_alu;
 
         // Test OR function
         $display("\n--- Testing OR Function ---");
-        func = ALU_OR;
+        func = ALU_FUNC_SEL_OR;
         
         // Basic OR
         src_a = 32'h0F0F0F0F; src_b = 32'hF0F0F0F0; expected = 32'hFFFFFFFF;
@@ -121,7 +121,7 @@ module tb_alu;
 
         // Test AND function
         $display("\n--- Testing AND Function ---");
-        func = ALU_AND;
+        func = ALU_FUNC_SEL_AND;
         
         // Basic AND
         src_a = 32'h0F0F0F0F; src_b = 32'hF0F0F0F0; expected = 32'h00000000;
@@ -141,7 +141,7 @@ module tb_alu;
 
         // Test XOR function
         $display("\n--- Testing XOR Function ---");
-        func = ALU_XOR;
+        func = ALU_FUNC_SEL_XOR;
         
         // Basic XOR
         src_a = 32'h0F0F0F0F; src_b = 32'hF0F0F0F0; expected = 32'hFFFFFFFF;
@@ -157,7 +157,7 @@ module tb_alu;
 
         // Test SRL function (Shift Right Logical)
         $display("\n--- Testing SRL Function ---");
-        func = ALU_SRL;
+        func = ALU_FUNC_SEL_SRL;
         
         // Basic right shift
         src_a = 32'h80000000; src_b = 32'h00000001; expected = 32'h40000000;
@@ -177,7 +177,7 @@ module tb_alu;
 
         // Test SLL function (Shift Left Logical)
         $display("\n--- Testing SLL Function ---");
-        func = ALU_SLL;
+        func = ALU_FUNC_SEL_SLL;
         
         // Basic left shift
         src_a = 32'h00000001; src_b = 32'h00000001; expected = 32'h00000002;
@@ -197,7 +197,7 @@ module tb_alu;
 
         // Test SRA function (Shift Right Arithmetic)
         $display("\n--- Testing SRA Function ---");
-        func = ALU_SRA;
+        func = ALU_FUNC_SEL_SRA;
         
         // Arithmetic right shift positive
         src_a = 32'h40000000; src_b = 32'h00000001; expected = 32'h20000000;
@@ -217,7 +217,7 @@ module tb_alu;
 
         // Test SLT function (Set Less Than)
         $display("\n--- Testing SLT Function ---");
-        func = ALU_SLT;
+        func = ALU_FUNC_SEL_SLT;
         
         // Basic less than (positive)
         src_a = 32'h00000001; src_b = 32'h00000002; expected = 32'h00000001;
@@ -241,7 +241,7 @@ module tb_alu;
 
         // Test SLTU function (Set Less Than Unsigned)
         $display("\n--- Testing SLTU Function ---");
-        func = ALU_SLTU;
+        func = ALU_FUNC_SEL_SLTU;
         
         // Basic unsigned less than
         src_a = 32'h00000001; src_b = 32'h00000002; expected = 32'h00000001;
@@ -261,7 +261,7 @@ module tb_alu;
 
         // Test LUI function
         $display("\n--- Testing LUI Function ---");
-        func = ALU_LUI;
+        func = ALU_FUNC_SEL_LUI;
         
         // LUI just copies src_a
         src_a = 32'h12345678; src_b = 32'h87654321; expected = 32'h12345678;

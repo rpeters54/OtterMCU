@@ -12,14 +12,14 @@ module tb_rfile;
 
     // Instantiate the DUT (Device Under Test)
     otter_rfile dut (
-        .clk(clk),
-        .r_addr1(r_addr1),
-        .r_addr2(r_addr2),
-        .w_en(w_en),
-        .w_addr(w_addr),
-        .w_data(w_data),
-        .r_rs1(r_rs1),
-        .r_rs2(r_rs2)
+        .i_clk(clk),
+        .i_r_addr1(r_addr1),
+        .i_r_addr2(r_addr2),
+        .i_w_en(w_en),
+        .i_w_addr(w_addr),
+        .i_w_data(w_data),
+        .o_r_rs1(r_rs1),
+        .o_r_rs2(r_rs2)
     );
 
     // Clock generation

@@ -5,31 +5,32 @@
 
 module tb_sanity;
 
-    reg clk = 0;
-    reg rst = 1;
+    reg w_clk = 0;
+    reg w_rst = 1;
 
     always begin
-        #5 clk = ~clk;
+        #5 w_clk = ~w_clk;
     end
 
     initial begin
-        repeat (5) @(posedge clk);
-        rst = 0;
-        repeat (10) @(posedge clk);
+        repeat (5) @(posedge w_clk);
+        w_rst = 0;
+        repeat (10) @(posedge w_clk);
         $finish();
     end
 
 
-	wire [31:0] intrpt       = '0;
-	wire [31:0] imem_r_data  = 32'h82f7b013;
-	wire [31:0] dmem_r_data  = '0;
+	wire [31:0] w_intrpt       = '0;
 
-	wire [31:0] imem_addr;
-	wire        dmem_r_en;
-	wire        dmem_w_en;
-	wire [ 3:0] dmem_w_strb;
-	wire [31:0] dmem_addr;
-	wire [31:0] dmem_w_data;
+    wire [31:0] w_imem_r_data = 32'h82f7b013;
+    wire [31:0] w_imem_addr;
+
+    wire        w_dmem_re;
+    wire        w_dmem_we;
+    wire [3:0]  w_dmem_sel;
+    wire [31:0] w_dmem_addr;
+    wire [31:0] w_dmem_w_data;
+    wire [31:0] w_dmem_r_data = 0;
 
     `define RISCV_FORMAL
 
@@ -37,19 +38,19 @@ module tb_sanity;
     otter_mcu # (
         .RESET_VEC(32'h0)
     ) mcu (
-        .clk(clk),
-        .rst(rst),
-        .intrpt(intrpt),
+        .i_clk          (w_clk),
+        .i_rst          (w_rst),
+        .i_intrpt       (w_intrpt),
 
-        .imem_r_data(imem_r_data),
-        .imem_addr(imem_addr),
+        .i_imem_r_data  (w_imem_r_data),
+        .o_imem_addr    (w_imem_addr),
 
-        .dmem_r_data(dmem_r_data),
-        .dmem_r_en(dmem_r_en),
-        .dmem_w_en(dmem_w_en),
-        .dmem_w_strb(dmem_w_strb),
-        .dmem_addr(dmem_addr),
-        .dmem_w_data(dmem_w_data)
+        .i_dmem_r_data  (w_dmem_r_data),
+        .o_dmem_re      (w_dmem_re),
+        .o_dmem_we      (w_dmem_we),
+        .o_dmem_sel     (w_dmem_sel),
+        .o_dmem_addr    (w_dmem_addr),
+        .o_dmem_w_data  (w_dmem_w_data)
     );
     /* verilator lint_on PINMISSING */
 

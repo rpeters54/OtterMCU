@@ -152,6 +152,7 @@ module otter_mcu #(
     reg         w_valid;
     reg         w_excp;
     reg         w_trap;
+    wire        w_br_taken;
 
     reg  [1:0]  w_present_state;
     reg  [1:0]  w_next_state;
@@ -364,7 +365,6 @@ module otter_mcu #(
     // Branch Condition Generator: verifies conditions of rs1 and rs2 for use in branch instructions
     //-----------------------------------------------------------------------------------------------//
 
-    wire       w_br_taken;
     wire [2:0] w_funct3 = `INSTRN_FUNCT3(w_instrn);
 
     otter_br_cond_gen u_otter_br_cond_gen (

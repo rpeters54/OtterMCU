@@ -13,6 +13,9 @@ SECTIONS
   . = ALIGN(0x1000);
   .data : { *(.data) }
   .data.string : { *(.data.string)}
+  . = ALIGN(0x1000);
+  __bss_start = .;
   .bss : { *(.bss) }
+  __bss_end = .;
   _end = .;
 }
