@@ -5,6 +5,7 @@
 module otter_rvfi (
     input             i_clk,
     input             i_rst,
+    input             i_stall,
     input             i_valid,
     input             i_excp,
     input             i_trap,
@@ -24,6 +25,10 @@ module otter_rvfi (
     input      [31:0] i_rfile_w_data,
     input      [31:0] i_rfile_r_rs1,
     input      [31:0] i_rfile_r_rs2,
+
+    // imem interface
+    input      [31:0] i_imem_addr,
+    input      [31:0] i_imem_r_data,
 
     // dmem interface
     input      [3:0]  i_dmem_sel,
@@ -46,6 +51,7 @@ module otter_rvfi (
     output reg [31:0] rvfi_csr_``NAME``_wdata,
 
     `RVFI_OUTPUTS
+    `RVFI_BUS_OUTPUTS
 
 `undef CSR_MACRO_OP
     // dummy signal needed because of trailing comma
@@ -96,7 +102,6 @@ module otter_rvfi (
         end
     end
 
-
     // used to drive the rvfi_intr signal
     // registers when an exception occurs
     reg w_next_vld_is_trap_handler;
@@ -120,8 +125,6 @@ module otter_rvfi (
 
     always @(posedge i_clk) begin
 
-        // a valid instruction is retiring if the instruction in wb
-        // is not a bubble and does not process an external interrupt
         rvfi_valid <= i_valid;
 
         // Fixed values
@@ -222,7 +225,127 @@ module otter_rvfi (
 
         `undef CSR_MACRO_OP
         end
-
     end
+
+    //==============================//
+    // RVFI IMEM/DMEM Bus Interface
+    //==============================//
+
+    reg w_stall_q;
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            w_stall_q  <= 0;
+        end else begin
+            w_stall_q  <= i_stall;
+        end
+    end
+
+    // ibus read address queue
+    reg [31:0] w_ibus_addr_q;
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            w_ibus_addr_q <= 0;
+        end else if (!i_stall) begin
+            w_ibus_addr_q <= i_imem_addr;
+        end
+    end
+
+    // dbus read address queue
+    reg [31:0] w_dbus_addr_q;
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            w_dbus_addr_q <= 0;
+        end else if (i_stall && i_op_sel[DCDR_OP_LOAD_IDX]) begin
+            w_dbus_addr_q <= i_dmem_addr;
+        end
+    end
+
+    // dbus interface signal handlers
+    reg                   w_dbus_valid;
+    wire                  w_dbus_insn    = 0;
+    wire                  w_dbus_data    = 1;
+    wire                  w_dbus_fault   = 0;
+    reg  [XLEN - 1:0]     w_dbus_addr;
+    reg  [XLEN / 8 - 1:0] w_dbus_rmask;
+    reg  [XLEN / 8 - 1:0] w_dbus_wmask;
+    reg  [XLEN - 1:0]     w_dbus_rdata;
+    reg  [XLEN - 1:0]     w_dbus_wdata;
+    always @(posedge i_clk) begin
+        if (i_rst || i_trap || i_excp) begin
+            w_dbus_valid <= 0;
+            w_dbus_addr  <= 0;
+            w_dbus_rmask <= 0;
+            w_dbus_wmask <= 0;
+            w_dbus_rdata <= 0;
+            w_dbus_wdata <= 0;
+
+        end else begin
+            w_dbus_valid <= 0;
+            w_dbus_addr  <= 0;
+            w_dbus_rmask <= 0;
+            w_dbus_wmask <= 0;
+            w_dbus_rdata <= 0;
+            w_dbus_wdata <= 0;
+
+            // on write accept, present write transaction to interface
+            if (i_op_sel[DCDR_OP_STORE_IDX]) begin
+                w_dbus_valid <= 1;
+                w_dbus_addr  <= i_dmem_addr;
+                w_dbus_wdata <= i_dmem_w_data;
+                w_dbus_wmask <= i_dmem_sel;
+            end
+
+            // on read acknowledge present read transaction to interface
+            if (w_stall_q && i_op_sel[DCDR_OP_LOAD_IDX]) begin
+                w_dbus_valid <= 1;
+                w_dbus_rdata <= i_dmem_r_data;
+                w_dbus_addr  <= w_dbus_addr_q;
+                w_dbus_rmask <= 4'b1111;
+            end
+        end
+    end
+
+    // ibus interface signal handlers
+    reg                   w_ibus_valid;
+    wire                  w_ibus_insn    = 1;
+    wire                  w_ibus_data    = 0;
+    wire                  w_ibus_fault   = 0;
+    reg  [XLEN     - 1:0] w_ibus_addr;
+    reg  [XLEN / 8 - 1:0] w_ibus_rmask;
+    wire [XLEN / 8 - 1:0] w_ibus_wmask   = 0;
+    reg  [XLEN     - 1:0] w_ibus_rdata;
+    wire [XLEN     - 1:0] w_ibus_wdata   = 0;
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            w_ibus_valid <= 0;
+            w_ibus_addr  <= 0;
+            w_ibus_rmask <= 0;
+            w_ibus_rdata <= 0;
+        end else begin
+            w_ibus_valid <= 0;
+            w_ibus_addr  <= 0;
+            w_ibus_rmask <= 0;
+            w_ibus_rdata <= 0;
+
+            // on read acknowledge present read transaction to interface
+            if (!w_stall_q) begin
+                w_ibus_valid <= 1;
+                w_ibus_rdata <= i_imem_r_data;
+                w_ibus_addr  <= w_ibus_addr_q;
+                w_ibus_rmask <= 4'b1111;
+            end
+        end
+    end
+
+    // rvfi signal concatenates the dbus and ibus ports
+    assign rvfi_bus_valid = {w_dbus_valid, w_ibus_valid};
+    assign rvfi_bus_insn  = {w_dbus_insn,  w_ibus_insn};
+    assign rvfi_bus_data  = {w_dbus_data,  w_ibus_data};
+    assign rvfi_bus_fault = {w_dbus_fault, w_ibus_fault};
+    assign rvfi_bus_addr  = {w_dbus_addr,  w_ibus_addr};
+    assign rvfi_bus_rmask = {w_dbus_rmask, w_ibus_rmask};
+    assign rvfi_bus_wmask = {w_dbus_wmask, w_ibus_wmask};
+    assign rvfi_bus_rdata = {w_dbus_rdata, w_ibus_rdata};
+    assign rvfi_bus_wdata = {w_dbus_wdata, w_ibus_wdata};
 
 endmodule

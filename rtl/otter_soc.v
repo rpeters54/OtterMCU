@@ -40,6 +40,7 @@ module otter_soc #(
     output [31:0] rvfi_csr_``NAME``_wdata,
 
     `RVFI_OUTPUTS
+    `RVFI_BUS_OUTPUTS
 
 `undef CSR_MACRO_OP
 
@@ -84,6 +85,7 @@ module otter_soc #(
         .rvfi_csr_``NAME``_wdata(rvfi_csr_``NAME``_wdata),
 
         `RVFI_INTERCONNECTS
+        `RVFI_BUS_INTERCONNECTS
 
     `undef CSR_MACRO_OP
 

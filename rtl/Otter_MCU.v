@@ -37,6 +37,7 @@ module otter_mcu #(
     output [31:0] rvfi_csr_``NAME``_wdata,
 
     `RVFI_OUTPUTS
+    `RVFI_BUS_OUTPUTS
 
 `undef CSR_MACRO_OP
 
@@ -431,7 +432,7 @@ module otter_mcu #(
 
 `endif
 
-    otter_csr csr (
+    otter_csr u_otter_csr (
         .i_clk          (i_clk),
         .i_rst          (i_rst),
         .i_intrpt       (i_intrpt),
@@ -493,6 +494,7 @@ module otter_mcu #(
     otter_rvfi u_otter_rvfi (
         .i_clk             (i_clk),
         .i_rst             (i_rst),
+        .i_stall           (w_stall),
         .i_valid           (w_valid),
         .i_excp            (w_excp),
         .i_trap            (w_trap),
@@ -509,6 +511,9 @@ module otter_mcu #(
         .i_rfile_w_data    (w_rfile_w_data),
         .i_rfile_r_rs1     (w_rfile_r_rs1),
         .i_rfile_r_rs2     (w_rfile_r_rs2),
+
+        .i_imem_addr       (o_imem_addr),
+        .i_imem_r_data     (i_imem_r_data),
 
         .i_dmem_sel        (o_dmem_sel),
         .i_dmem_addr       (o_dmem_addr),
@@ -535,6 +540,7 @@ module otter_mcu #(
         .rvfi_csr_``NAME``_wdata(rvfi_csr_``NAME``_wdata),
 
         `RVFI_INTERCONNECTS
+        `RVFI_BUS_INTERCONNECTS
 
     `undef CSR_MACRO_OP
         ._dummy(1'b0)

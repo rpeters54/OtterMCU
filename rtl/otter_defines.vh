@@ -5,6 +5,7 @@
     // INSTRN Defines
     //----------------//
 
+    localparam XLEN = 32;
     `define INSTRN_CSR_ADDR(instrn)   (instrn[31:20])
     `define INSTRN_CSR(instrn)        (instrn[31:20])
     `define INSTRN_MEM_SIZE(instrn)   (instrn[13:12])
@@ -369,4 +370,27 @@
         .rvfi_mem_wdata(rvfi_mem_wdata), \
         `RVFI_CSR_LIST
 
+    localparam NUM_CH = 2;
+
+    `define RVFI_BUS_OUTPUTS \
+        output [NUM_CH - 1:0]            rvfi_bus_valid, \
+        output [NUM_CH - 1:0]            rvfi_bus_insn,  \
+        output [NUM_CH - 1:0]            rvfi_bus_data,  \
+        output [NUM_CH - 1:0]            rvfi_bus_fault, \
+        output [XLEN * NUM_CH - 1:0]     rvfi_bus_addr,  \
+        output [XLEN / 8 * NUM_CH - 1:0] rvfi_bus_rmask, \
+        output [XLEN / 8 * NUM_CH - 1:0] rvfi_bus_wmask, \
+        output [XLEN * NUM_CH - 1:0]     rvfi_bus_rdata, \
+        output [XLEN * NUM_CH - 1:0]     rvfi_bus_wdata,
+
+    `define RVFI_BUS_INTERCONNECTS \
+        .rvfi_bus_valid(rvfi_bus_valid), \
+        .rvfi_bus_insn(rvfi_bus_insn),   \
+        .rvfi_bus_data(rvfi_bus_data),   \
+        .rvfi_bus_fault(rvfi_bus_fault), \
+        .rvfi_bus_addr(rvfi_bus_addr),   \
+        .rvfi_bus_rmask(rvfi_bus_rmask), \
+        .rvfi_bus_wmask(rvfi_bus_wmask), \
+        .rvfi_bus_rdata(rvfi_bus_rdata), \
+        .rvfi_bus_wdata(rvfi_bus_wdata),
 `endif

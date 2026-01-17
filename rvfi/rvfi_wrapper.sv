@@ -10,6 +10,7 @@
 
 module rvfi_wrapper (
 	`RVFI_OUTPUTS
+	`RVFI_BUS_OUTPUTS
 	input         clock,
 	input         reset
 );
@@ -42,6 +43,7 @@ module rvfi_wrapper (
         .i_intrpt       (w_intrpt),
 
         `RVFI_INTERCONNECTS
+        `RVFI_BUS_INTERCONNECTS
 
         .i_imem_r_data  (w_imem_r_data),
         .o_imem_addr    (w_imem_addr),
