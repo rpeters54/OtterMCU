@@ -315,5 +315,116 @@ module otter_csr (
 
 `endif
 
+`ifdef FORMAL
+
+    reg f_past_valid = 0;
+    always @(posedge i_clk) f_past_valid <= 1;
+
+    // ---------------- Assumptions ----------------
+
+    always @(posedge i_clk) if (!f_past_valid) assume(i_rst);
+
+    // -------------------
+    // Helper signals
+    // -------------------
+
+    wire f_is_excp   = (|i_excp);
+    wire f_is_intr   = (w_intrpt_vld && !i_mask_intrpt);
+    wire f_is_trap   = (f_is_excp || f_is_intr);
+    wire f_is_mret   = (i_csr_op_sel == CSR_OP_SEL_MRET);
+    wire f_is_ecall  = (i_csr_op_sel == CSR_OP_SEL_ECALL);
+    wire f_is_ebreak = (i_csr_op_sel == CSR_OP_SEL_EBREAK);
+
+    // ---------------- Assertions ----------------
+
+    // reset clears writeable csrs
+    always @(posedge i_clk) begin
+        if (f_past_valid && $past(i_rst)) begin
+             assert(w_mstatus  == 0);
+             assert(w_mie      == 0);
+             assert(w_mip      == 0);
+             assert(w_mtvec    == 0);
+             assert(w_mstatush == 0);
+             assert(w_mscratch == 0);
+             assert(w_mepc     == 0);
+             assert(w_mcause   == 0);
+             assert(w_mtval    == 0);
+        end
+    end
+
+    // readonly csrs are never modified
+    always @(*) begin
+        assert(w_misa       == CSR_MISA_VALUE);
+        assert(w_mvendorid  == CSR_MVENDORID_VALUE);
+        assert(w_marchid    == CSR_MARCHID_VALUE);
+        assert(w_mimpid     == CSR_MIMPID_VALUE);
+        assert(w_mhartid    == CSR_MHARTID_VALUE);
+        assert(w_mconfigptr == CSR_MCONFIGPTR_VALUE);
+    end
+
+    always @(*) begin
+
+        // Check flush logic
+        assert(o_trap == (
+            !i_rst && !f_is_intr && (
+                   f_is_trap
+                || f_is_mret
+                || f_is_ecall
+                || f_is_ebreak
+            )
+        ));
+
+        // Check trap address generation (from your original code)
+        if (!i_rst && f_is_intr && w_mtvec[1]) begin
+            assert(o_epc_addr == (w_mtvec & EPC_ADDR_MASK) + { 25'd0, w_intrpt_pending, 2'd0 });
+        end else if (!i_rst && !f_is_trap && i_csr_op_sel == CSR_OP_SEL_MRET) begin
+            assert(o_epc_addr == w_mepc);
+        end else begin
+            assert(o_epc_addr == (w_mtvec & EPC_ADDR_MASK));
+        end
+
+        // 4. WARL Check: Writing to a CSR must not affect un-masked bits
+        if (!i_rst && !f_is_trap && i_csr_we && i_csr_op_sel == CSR_OP_SEL_WRITE) begin
+            if (i_csr_addr == CSR_MSTATUS_ADDR)
+                assert((w_mstatus_next & ~CSR_MSTATUS_MASK) == (w_mstatus & ~CSR_MSTATUS_MASK));
+            if (i_csr_addr == CSR_MIE_ADDR)
+                assert((w_mie_next & ~CSR_MIE_MASK) == (w_mie & ~CSR_MIE_MASK));
+            if (i_csr_addr == CSR_MTVEC_ADDR)
+                assert((w_mtvec_next & ~CSR_MTVEC_MASK) == (w_mtvec & ~CSR_MTVEC_MASK));
+            if (i_csr_addr == CSR_MEPC_ADDR)
+                assert((w_mepc_next & ~CSR_MEPC_MASK) == (w_mepc & ~CSR_MEPC_MASK));
+            if (i_csr_addr == CSR_MCAUSE_ADDR)
+                assert((w_mcause_next & ~CSR_MCAUSE_MASK) == (w_mcause & ~CSR_MCAUSE_MASK));
+        end
+
+        // 5. Trap Behavior: Check state changes on traps
+        if (!i_rst && f_is_trap) begin
+            assert(w_mstatus_next[3] == 0); // MIE is cleared
+            assert(w_mstatus_next[7] == w_mstatus[3]); // MPIE stores old MIE
+            assert(w_mepc_next == i_trap_pc);
+        end
+
+        // 6. Exception Cause: Check mcause and mtval
+        if (!i_rst && f_is_excp && !f_is_intr) begin
+            assert(w_mcause_next == w_mcause_excp_next);
+            assert(w_mtval_next == i_trap_mtval);
+        end
+
+        // 7. Interrupt Cause: Check mcause
+        if (!i_rst && f_is_intr) begin
+            assert(w_mcause_next == (MCAUSE_INTRPT_BIT | {27'd0, w_intrpt_pending}));
+        end
+
+        // 8. MRET Behavior: Check mstatus update
+        if (!i_rst && !f_is_trap && f_is_mret) begin
+            assert(w_mstatus_next[3] == w_mstatus[7]); // MIE restored from MPIE
+            assert(w_mstatus_next[7] == 1); // MPIE is set
+        end
+
+        // 9. Interrupt Validity: Tightly check the interrupt valid logic
+        assert(w_intrpt_vld == (w_mstatus[3] && (|(w_mie & w_mip))));
+    end
+
+`endif
 
 endmodule

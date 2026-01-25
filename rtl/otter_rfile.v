@@ -54,4 +54,41 @@ module otter_rfile (
         end
     end
 
+
+    `ifdef FORMAL
+
+        reg f_past_valid = 0;
+        always @(posedge i_clk) f_past_valid <= 1;
+
+        // read consistency proof
+        always @(*) begin
+            if (i_r_addr1 == 0) begin
+                assert(o_r_rs1 == 0);
+            end
+            if (i_r_addr2 == 0) begin
+                assert(o_r_rs2 == 0);
+            end
+        end
+
+        // write consistency proof
+        (* anyconst *) reg [4:0] f_addr;
+        reg        f_shadow_valid;
+        reg [31:0] f_shadow_data;
+
+        initial f_shadow_valid = 0;
+        always @(posedge i_clk) if (f_past_valid && f_addr != 0) begin
+            if (i_w_addr == f_addr && i_w_en) begin
+                f_shadow_valid <= 1;
+                f_shadow_data  <= i_w_data;
+            end
+            if (i_r_addr1 == f_addr && f_shadow_valid) begin
+                assert(o_r_rs1 == f_shadow_data);
+            end
+            if (i_r_addr2 == f_addr && f_shadow_valid) begin
+                assert(o_r_rs2 == f_shadow_data);
+            end
+        end
+
+    `endif
+
 endmodule

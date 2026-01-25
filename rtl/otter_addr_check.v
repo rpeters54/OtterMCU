@@ -88,19 +88,18 @@ module otter_addr_check (
     end
 
 
-
 `ifdef FORMAL
 
     // --- Formal Assertions --- 
 
     // input must be one hot encoded
     always @(*) begin
-        assume ($onehot(i_op_sel));
+        assume ($onehot0(i_op_sel));
     end
 
     // illegal instrn overrides all other exceptions
     always @(*) if (i_ill_instrn) begin
-        assert(o_excp_sel   == DCDRCP_SEL_ILLEGAL);
+        assert(o_excp_sel   == DCDR_EXCP_SEL_ILLEGAL);
         assert(o_trap_mtval == i_instrn);
     end
 
@@ -109,7 +108,7 @@ module otter_addr_check (
     always @(*) if (!i_ill_instrn) begin
         if (i_op_sel[DCDR_OP_JAL_IDX]) begin
             if (|i_addr_gen_jal[1:0]) begin
-                assert(o_excp_sel   == DCDRCP_SEL_JUMP);
+                assert(o_excp_sel   == DCDR_EXCP_SEL_JUMP);
                 assert(o_trap_mtval == i_addr_gen_jal);
             end else begin
                 assert(o_excp_sel   == 0);
@@ -121,7 +120,7 @@ module otter_addr_check (
     always @(*) if (!i_ill_instrn) begin
         if (i_op_sel[DCDR_OP_JALR_IDX]) begin
             if (|i_addr_gen_jalr[1:0]) begin
-                assert(o_excp_sel   == DCDRCP_SEL_JUMP);
+                assert(o_excp_sel   == DCDR_EXCP_SEL_JUMP);
                 assert(o_trap_mtval == i_addr_gen_jalr);
             end else begin
                 assert(o_excp_sel   == 0);
@@ -134,7 +133,7 @@ module otter_addr_check (
     always @(*) if (!i_ill_instrn) begin
         if (i_op_sel[DCDR_OP_BRANCH_IDX]) begin
             if (i_br_taken && |i_addr_gen_branch[1:0]) begin
-                assert(o_excp_sel   == DCDRCP_SEL_JUMP);
+                assert(o_excp_sel   == DCDR_EXCP_SEL_JUMP);
                 assert(o_trap_mtval == i_addr_gen_branch);
             end else begin
                 assert(o_excp_sel   == 0);
@@ -149,7 +148,7 @@ module otter_addr_check (
                     (i_funct3 == FUNCT3_I_LW && |i_alu_result[1:0])
                 ||  ((i_funct3 == FUNCT3_I_LH || i_funct3 == FUNCT3_I_LHU) && i_alu_result[0])
             ) begin
-                assert(o_excp_sel   == DCDRCP_SEL_LOAD);
+                assert(o_excp_sel   == DCDR_EXCP_SEL_LOAD);
                 assert(o_trap_mtval == i_alu_result);
             end else begin
                 assert(o_excp_sel   == 0);
@@ -164,7 +163,7 @@ module otter_addr_check (
                     (i_funct3 == FUNCT3_S_SW && |i_alu_result[1:0])
                 ||  (i_funct3 == FUNCT3_S_SH && i_alu_result[0])
             ) begin
-                assert(o_excp_sel   == DCDRCP_SEL_STORE);
+                assert(o_excp_sel   == DCDR_EXCP_SEL_STORE);
                 assert(o_trap_mtval == i_alu_result);
             end else begin
                 assert(o_excp_sel   == 0);

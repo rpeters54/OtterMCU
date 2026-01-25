@@ -33,6 +33,7 @@ module tb_sanity;
     wire [31:0] w_dmem_r_data = 0;
 
     `define RISCV_FORMAL
+    `define FORMAL
 
     /* verilator lint_off PINMISSING */
     otter_mcu # (

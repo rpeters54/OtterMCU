@@ -1,0 +1,29 @@
+[tasks]
+bmc
+prove
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 20
+bmc: expect pass
+
+prove: mode prove
+prove: depth 20
+prove: expect pass
+
+cover: mode cover
+cover: depth 20
+cover: expect pass
+
+
+[engines]
+smtbmc boolector
+
+[script]
+read -formal otter_dcdr.v
+prep -top otter_dcdr
+
+[files]
+../../rtl/otter_dcdr.v
+../../rtl/otter_defines.vh

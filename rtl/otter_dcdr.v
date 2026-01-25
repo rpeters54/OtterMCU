@@ -271,6 +271,22 @@ module otter_dcdr (
                 o_ill_instrn = 1;
             end
         endcase
+
+        // illegal instructions must not read/write external state
+        if (o_ill_instrn) begin
+            o_alu_func_sel  = 0;
+            o_alu_src_a_sel = 0;
+            o_alu_src_b_sel = 0;
+            o_rfile_w_sel   = 0;
+            o_imm_gen_sel   = 0;
+            o_addr_gen_sel  = 0;
+            o_op_sel        = 0;
+
+            o_rfile_we      = 0;
+            o_dmem_re       = 0;
+            o_dmem_we       = 0;
+            o_csr_we        = 0;
+        end
     end
 
 
@@ -317,205 +333,305 @@ module otter_dcdr (
 
 `ifdef FORMAL
 
-    assign illegal_instrn = |csr_trap_cause_sel;
+    // CSR write attempt per spec (rs1!=x0 means write for RS/RC)
+    wire csr_f3_rwgrp = (w_funct3==FUNCT3_SYS_CSRRW) | (w_funct3==FUNCT3_SYS_CSRRS) | (w_funct3==FUNCT3_SYS_CSRRC)
+                      | (w_funct3==FUNCT3_SYS_CSRRWI)| (w_funct3==FUNCT3_SYS_CSRRSI)| (w_funct3==FUNCT3_SYS_CSRRCI);
+    wire csr_write_attempt = (w_funct3==FUNCT3_SYS_CSRRW) | (w_funct3==FUNCT3_SYS_CSRRWI)
+                           | ((w_funct3==FUNCT3_SYS_CSRRS)  & (w_rs1_addr!=5'b0))
+                           | ((w_funct3==FUNCT3_SYS_CSRRC)  & (w_rs1_addr!=5'b0))
+                           | ((w_funct3==FUNCT3_SYS_CSRRSI) & (w_rs1_addr!=5'b0)) // rs1 encodes uimm in *I forms; nonzero means write
+                           | ((w_funct3==FUNCT3_SYS_CSRRCI) & (w_rs1_addr!=5'b0));
 
-    // Helper signals for formal properties
-    wire f_preempted = rst || illegal_instrn || csr_intrpt_vld;
-    reg  f_past_valid;
-    reg  f_past_rst;
-    reg [31:0] f_prev_instrn;
+    // ============= Generic invariants =============
 
-    wire branch_taken = (funct3 == FUNCT3_B_BEQ  &&  br_eq)  ||
-        (funct3 == FUNCT3_B_BNE  && !br_eq)  ||
-        (funct3 == FUNCT3_B_BLT  &&  br_lt)  ||
-        (funct3 == FUNCT3_B_BGE  && !br_lt)  ||
-        (funct3 == FUNCT3_B_BLTU &&  br_ltu) ||
-        (funct3 == FUNCT3_B_BGEU && !br_ltu);
+    // Illegal ⇒ all selectors/enablers are zeroed
+    always @* if (o_ill_instrn) begin
+        assert(o_alu_func_sel  == 4'd0);
+        assert(o_alu_src_a_sel == 1'd0);
+        assert(o_alu_src_b_sel == 1'd0);
+        assert(o_rfile_w_sel   == 2'd0);
+        assert(o_imm_gen_sel   == 3'd0);
+        assert(o_addr_gen_sel  == 2'd0);
+        assert(o_op_sel        == 15'd0);
 
-
-    initial begin
-        f_past_valid = 0;
-        f_past_rst = 0;
-        f_prev_cycle_was_load = 0;
-        f_prev_instrn = '0;
+        assert(!o_rfile_we);
+        assert(!o_dmem_re);
+        assert(!o_dmem_we);
+        assert(!o_csr_we);
     end
 
-    always @(posedge clk) begin
-        f_past_valid <= 1;
-        f_past_rst   <= rst;
-        f_prev_instrn <= instrn;
+
+    // ============= OP_REG (R-type) =============
+    // Valid pairs produce ALU operation, writeback, rs1/rs2 sources.
+    wire is_op_reg = (w_opcode == OPCODE_OP_REG);
+    always @* if (is_op_reg) begin
+        // sources & writeback for all non-illegal R-type
+        if (!o_ill_instrn) begin
+            assert(o_alu_src_a_sel == ALU_SRC_A_SEL_RS1);
+            assert(o_alu_src_b_sel == ALU_SRC_B_SEL_RS2);
+            assert(o_rfile_w_sel   == RFILE_W_SEL_ALU_RESULT);
+            assert(o_rfile_we);
+            assert(!o_dmem_re);
+            assert(!o_dmem_we);
+            assert(!o_csr_we);
+            assert(o_op_sel        == DCDR_OP_SEL_REG);
+        end
+
+        // Table of legal {funct7,funct3} → func
+        unique case ({w_funct7,w_funct3})
+            {FUNCT7_I_R_0, FUNCT3_R_ADD} : assert(o_alu_func_sel == ALU_FUNC_SEL_ADD && !o_ill_instrn);
+            {FUNCT7_I_R_1, FUNCT3_R_SUB} : assert(o_alu_func_sel == ALU_FUNC_SEL_SUB && !o_ill_instrn);
+            {FUNCT7_I_R_0, FUNCT3_R_SLL} : assert(o_alu_func_sel == ALU_FUNC_SEL_SLL && !o_ill_instrn);
+            {FUNCT7_I_R_0, FUNCT3_R_SLT} : assert(o_alu_func_sel == ALU_FUNC_SEL_SLT && !o_ill_instrn);
+            {FUNCT7_I_R_0, FUNCT3_R_SLTU}: assert(o_alu_func_sel == ALU_FUNC_SEL_SLTU && !o_ill_instrn);
+            {FUNCT7_I_R_0, FUNCT3_R_XOR} : assert(o_alu_func_sel == ALU_FUNC_SEL_XOR && !o_ill_instrn);
+            {FUNCT7_I_R_0, FUNCT3_R_SRL} : assert(o_alu_func_sel == ALU_FUNC_SEL_SRL && !o_ill_instrn);
+            {FUNCT7_I_R_1, FUNCT3_R_SRA} : assert(o_alu_func_sel == ALU_FUNC_SEL_SRA && !o_ill_instrn);
+            {FUNCT7_I_R_0, FUNCT3_R_OR}  : assert(o_alu_func_sel == ALU_FUNC_SEL_OR  && !o_ill_instrn);
+            {FUNCT7_I_R_0, FUNCT3_R_AND} : assert(o_alu_func_sel == ALU_FUNC_SEL_AND && !o_ill_instrn);
+            default:                      assert(o_ill_instrn);
+        endcase
     end
 
-    // --- Assumptions ---
-    always @(*) begin
-        if (!f_past_valid) assume(rst);
-    end
+    // ============= OP_IMM (I-type ALU) =============
+    wire is_op_imm = (w_opcode == OPCODE_OP_IMM);
+    always @* if (is_op_imm) begin
+        if (!o_ill_instrn) begin
+            assert(o_alu_src_a_sel == ALU_SRC_A_SEL_RS1);
+            assert(o_alu_src_b_sel == ALU_SRC_B_SEL_IMM);
+            assert(o_rfile_w_sel   == RFILE_W_SEL_ALU_RESULT);
+            assert(o_imm_gen_sel   == IMM_GEN_SEL_I_TYPE);
+            assert(o_rfile_we);
+            assert(!o_dmem_re);
+            assert(!o_dmem_we);
+            assert(!o_csr_we);
+            assert(o_op_sel        == DCDR_OP_SEL_IMM);
+        end
 
-    // --- Assertions ---
-    always @(*) begin
-        // On reset, the FSM must be in the INIT state.
-        if (f_past_rst) assert(present_state == ST_INIT);
-
-        // regardless of other inputs, if reset these should be valid
-        if (rst)
-            assert(pc_src_sel    == PC_SRC_SEL_RESET_VEC &&
-                   csr_op_sel    == CSR_OP_RESET &&
-                   next_state    == ST_INIT &&
-                   pc_w_en       == 1 &&
-                   rfile_w_en    == 0 &&
-                   dmem_w_en     == 0 &&
-                   dmem_r_en     == 0 &&
-                   csr_w_en      == 0 &&
-                   stall         == 0);
-
-        // interrupts take priority over synchronous traps
-        if (present_state == ST_EXEC && !rst && csr_intrpt_vld && illegal_instrn)
-            assert(csr_op_sel == CSR_OP_INTRPT);
-
-        // When any trap or interrupt is taken, architectural state writes must be disabled.
-        if (present_state == ST_EXEC && !rst && csr_intrpt_vld && illegal_instrn)
-            assert(next_state    == ST_EXEC &&
-                   pc_w_en       == 1 &&
-                   rfile_w_en    == 0 &&
-                   dmem_w_en     == 0 &&
-                   dmem_r_en     == 0 &&
-                   csr_w_en      == 0 &&
-                   stall         == 0);
-
-        // R-Type Control Signals
-        if (present_state == ST_EXEC && opcode == OPCODE_OP_REG && !f_preempted)
-            assert(alu_src_sel_a == ALU_SRC_SEL_A_RS1 &&
-                   alu_src_sel_b == ALU_SRC_SEL_B_RS2 &&
-                   rfile_w_sel   == RFILE_W_SEL_ALU_RESULT &&
-                   alu_func      == {instrn[30], funct3} &&
-                   pc_src_sel    == PC_SRC_SEL_ADDR_INC &&
-                   pc_w_en       == 1 &&
-                   rfile_w_en    == 1 &&
-                   dmem_w_en     == 0 &&
-                   dmem_r_en     == 0 &&
-                   csr_w_en      == 0 &&
-                   stall         == 0);
-
-        // I-Type Control Signals
-        if (present_state == ST_EXEC && opcode == OPCODE_OP_IMM && !f_preempted)
-            assert(alu_src_sel_a == ALU_SRC_SEL_A_RS1 &&
-                   alu_src_sel_b == ALU_SRC_SEL_B_I_TYPE_IMM &&
-                   rfile_w_sel   == RFILE_W_SEL_ALU_RESULT &&
-                   alu_func      == {(funct3 == FUNCT3_I_SRI) && instrn[30], funct3} &&
-                   pc_src_sel    == PC_SRC_SEL_ADDR_INC &&
-                   pc_w_en       == 1 &&
-                   rfile_w_en    == 1 &&
-                   dmem_w_en     == 0 &&
-                   dmem_r_en     == 0 &&
-                   csr_w_en      == 0 &&
-                   stall         == 0);
-
-        // JALR Control Signals
-        if (present_state == ST_EXEC && opcode == OPCODE_JALR && !f_preempted)
-            assert(rfile_w_sel   == RFILE_W_SEL_PC_ADDR_INC &&
-                   pc_src_sel    == PC_SRC_SEL_JALR &&
-                   pc_w_en       == 1 &&
-                   rfile_w_en    == 1 &&
-                   dmem_w_en     == 0 &&
-                   dmem_r_en     == 0 &&
-                   csr_w_en      == 0 &&
-                   stall         == 0);
-
-        // LOAD instruction (first cycle)
-        if (present_state == ST_EXEC && opcode == OPCODE_LOAD && !f_preempted)
-            assert(alu_src_sel_a == ALU_SRC_SEL_A_RS1 && 
-                   alu_src_sel_b == ALU_SRC_SEL_B_I_TYPE_IMM &&
-                   alu_func      == ALU_ADD &&
-                   next_state    == ST_WR_BK &&
-                   pc_w_en       == 0 &&
-                   rfile_w_en    == 0 &&
-                   dmem_w_en     == 0 &&
-                   dmem_r_en     == 1 &&
-                   csr_w_en      == 0 &&
-                   stall         == 1);
-
-        // LOAD instruction (write back)
-        if (present_state == ST_WR_BK && !rst)
-            assert(next_state    == ST_EXEC &&
-                   pc_w_en       == 1 &&
-                   rfile_w_en    == 1 &&
-                   dmem_w_en     == 0 &&
-                   dmem_r_en     == 0 &&
-                   csr_w_en      == 0 &&
-                   stall         == 0);
-
-        // STORE instruction
-        if (present_state == ST_EXEC && opcode == OPCODE_STORE && !f_preempted)
-            assert(pc_w_en       == 1 &&
-                   rfile_w_en    == 0 &&
-                   dmem_w_en     == 1 &&
-                   dmem_r_en     == 0 &&
-                   csr_w_en      == 0 &&
-                   stall         == 0);
-
-        // Branch instruction
-       if (present_state == ST_EXEC && opcode == OPCODE_BRANCH && !f_preempted) begin
-            if (branch_taken) begin
-                assert(addr_branch_alignment == '0 &&
-                       pc_src_sel == PC_SRC_SEL_BRANCH);
-            end else begin
-                assert(pc_src_sel == PC_SRC_SEL_ADDR_INC);
+        unique case (w_funct3)
+            FUNCT3_I_ADDI : assert(o_alu_func_sel == ALU_FUNC_SEL_ADD  && !o_ill_instrn);
+            FUNCT3_I_SLTI : assert(o_alu_func_sel == ALU_FUNC_SEL_SLT  && !o_ill_instrn);
+            FUNCT3_I_SLTIU: assert(o_alu_func_sel == ALU_FUNC_SEL_SLTU && !o_ill_instrn);
+            FUNCT3_I_ORI  : assert(o_alu_func_sel == ALU_FUNC_SEL_OR   && !o_ill_instrn);
+            FUNCT3_I_XORI : assert(o_alu_func_sel == ALU_FUNC_SEL_XOR  && !o_ill_instrn);
+            FUNCT3_I_ANDI : assert(o_alu_func_sel == ALU_FUNC_SEL_AND  && !o_ill_instrn);
+            FUNCT3_I_SLI  : begin
+                if (w_funct7 == FUNCT7_I_R_0) begin
+                    assert(o_alu_func_sel == ALU_FUNC_SEL_SLL && !o_ill_instrn);
+                end else begin
+                    assert(o_ill_instrn);
+                end
             end
-       end
-
-        // Load Upper Immediate instruction
-        if (present_state == ST_EXEC && opcode == OPCODE_LUI && !f_preempted)
-            assert(alu_src_sel_a == ALU_SRC_SEL_A_UPPER_IMM &&
-                   rfile_w_sel   == RFILE_W_SEL_ALU_RESULT &&
-                   alu_func      == ALU_LUI &&
-                   rfile_w_en    == 1);
-
-        // Add Upper Immediate to PC instruction
-        if (present_state == ST_EXEC && opcode == OPCODE_AUIPC && !f_preempted)
-            assert(alu_src_sel_a == ALU_SRC_SEL_A_UPPER_IMM &&
-                   alu_src_sel_b == ALU_SRC_SEL_B_PC_ADDR &&
-                   rfile_w_sel   == RFILE_W_SEL_ALU_RESULT &&
-                   alu_func      == ALU_ADD &&
-                   rfile_w_en    == 1);
-
-        // JAL instruction.
-        if (present_state == ST_EXEC && opcode == OPCODE_JAL && !f_preempted)
-            assert(pc_src_sel == PC_SRC_SEL_JAL && 
-                   rfile_w_en == 1 && 
-                   rfile_w_sel == RFILE_W_SEL_PC_ADDR_INC);
-
-        //FIXME: fails to cover all legal Fences
-        // Fence is valid
-        if (present_state == ST_EXEC && (instrn == {PREFIX_FENCE, OPCODE_FENCE} || instrn == {PREFIX_FENCE_I, OPCODE_FENCE})) begin
-            assert(!illegal_instrn);
-        end
-
-        // Property: For an ECALL instruction.
-        if (present_state == ST_EXEC && instrn == 32'h00000073 && !f_preempted) // Full ECALL encoding
-            assert(csr_op_sel == CSR_OP_ECALL && pc_src_sel == PC_SRC_SEL_MTVEC);
-
-        //TODO: add remaining System Opcode checks
+            FUNCT3_I_SRI  : begin
+                if (w_funct7 == FUNCT7_I_R_0) begin
+                    assert(o_alu_func_sel == ALU_FUNC_SEL_SRL && !o_ill_instrn);
+                end else if (w_funct7 == FUNCT7_I_R_1) begin
+                    assert(o_alu_func_sel == ALU_FUNC_SEL_SRA && !o_ill_instrn);
+                end else begin
+                    assert(o_ill_instrn);
+                end
+            end
+            default: assert(o_ill_instrn);
+        endcase
     end
 
-    // --- Coverage Checks ---
-    always @(posedge clk) begin
-        if (!rst) begin
-            cover(present_state == ST_EXEC && opcode == OPCODE_OP_REG && !f_preempted);
-            cover(present_state == ST_EXEC && opcode == OPCODE_OP_IMM && !f_preempted);
-            cover(present_state == ST_EXEC && opcode == OPCODE_JALR && !f_preempted);
-            cover(present_state == ST_EXEC && opcode == OPCODE_LOAD && !f_preempted);
-            cover(present_state == ST_EXEC && opcode == OPCODE_STORE && !f_preempted);
-            cover(present_state == ST_EXEC && opcode == OPCODE_BRANCH && !f_preempted);
-            cover(present_state == ST_EXEC && opcode == OPCODE_LUI && !f_preempted);
-            cover(present_state == ST_EXEC && opcode == OPCODE_AUIPC && !f_preempted);
-            cover(present_state == ST_EXEC && opcode == OPCODE_JAL && !f_preempted);
-            cover(present_state == ST_EXEC && opcode == OPCODE_FENCE && !f_preempted);
-            cover(present_state == ST_EXEC && opcode == OPCODE_SYSTEM && !f_preempted);
-            cover(present_state == ST_WR_BK);
-            cover(present_state == ST_EXEC && csr_intrpt_vld);
-            cover(present_state == ST_EXEC && illegal_instrn && !csr_intrpt_vld);
+    // ============= JALR =============
+    always @* if (w_opcode == OPCODE_JALR) begin
+        if (w_funct3 == FUNCT3_I_JALR) begin
+            assert(!o_ill_instrn);
+            assert(o_rfile_we);
+            assert(o_rfile_w_sel  == RFILE_W_SEL_PC_ADDR_INC);
+            assert(o_imm_gen_sel  == IMM_GEN_SEL_I_TYPE);
+            assert(o_addr_gen_sel == ADDR_GEN_SEL_JALR);
+            assert(o_op_sel       == DCDR_OP_SEL_JALR);
+            assert(!o_dmem_re);
+            assert(!o_dmem_we);
+            assert(!o_csr_we);
+        end else begin
+            assert(o_ill_instrn);
         end
     end
+
+    // ============= LOADS =============
+    always @* if (w_opcode == OPCODE_LOAD) begin
+        unique case (w_funct3)
+            FUNCT3_I_LB, FUNCT3_I_LH, FUNCT3_I_LW, FUNCT3_I_LBU, FUNCT3_I_LHU: begin
+                assert(!o_ill_instrn);
+                assert(o_alu_src_a_sel == ALU_SRC_A_SEL_RS1);
+                assert(o_alu_src_b_sel == ALU_SRC_B_SEL_IMM);
+                assert(o_alu_func_sel  == ALU_FUNC_SEL_ADD);
+                assert(o_imm_gen_sel   == IMM_GEN_SEL_I_TYPE);
+                assert(o_rfile_w_sel   == RFILE_W_SEL_DMEM_R_DATA);
+                assert(o_op_sel        == DCDR_OP_SEL_LOAD);
+                assert(!o_rfile_we);
+                assert(o_dmem_re);
+                assert(!o_dmem_we);
+                assert(!o_csr_we);
+            end
+            default: assert(o_ill_instrn);
+        endcase
+    end
+
+    // ============= STORES =============
+    always @* if (w_opcode == OPCODE_STORE) begin
+        unique case (w_funct3)
+            FUNCT3_S_SB, FUNCT3_S_SH, FUNCT3_S_SW: begin
+                assert(!o_ill_instrn);
+                assert(o_alu_src_a_sel == ALU_SRC_A_SEL_RS1);
+                assert(o_alu_src_b_sel == ALU_SRC_B_SEL_IMM);
+                assert(o_alu_func_sel  == ALU_FUNC_SEL_ADD);
+                assert(o_imm_gen_sel   == IMM_GEN_SEL_S_TYPE);
+                assert(o_op_sel        == DCDR_OP_SEL_STORE);
+                assert(!o_rfile_we);
+                assert(!o_dmem_re);
+                assert(o_dmem_we);
+                assert(!o_csr_we);
+            end
+            default: assert(o_ill_instrn);
+        endcase
+    end
+
+    // ============= BRANCHES =============
+    always @* if (w_opcode == OPCODE_BRANCH) begin
+        unique case (w_funct3)
+            FUNCT3_B_BEQ, FUNCT3_B_BNE, FUNCT3_B_BLT,
+            FUNCT3_B_BGE, FUNCT3_B_BLTU, FUNCT3_B_BGEU: begin
+                assert(!o_ill_instrn);
+                assert(o_imm_gen_sel  == IMM_GEN_SEL_BRANCH);
+                assert(o_addr_gen_sel == ADDR_GEN_SEL_BRANCH);
+                assert(o_op_sel       == DCDR_OP_SEL_BRANCH);
+                assert(!o_rfile_we);
+                assert(!o_dmem_re);
+                assert(!o_dmem_we);
+                assert(!o_csr_we);
+            end
+            default: assert(o_ill_instrn);
+        endcase
+    end
+
+    // ============= LUI =============
+    always @* if (w_opcode == OPCODE_LUI) begin
+        assert(!o_ill_instrn);
+        assert(o_alu_src_b_sel == ALU_SRC_B_SEL_IMM);
+        assert(o_rfile_w_sel   == RFILE_W_SEL_ALU_RESULT);
+        assert(o_alu_func_sel  == ALU_FUNC_SEL_LUI);
+        assert(o_imm_gen_sel   == IMM_GEN_SEL_UPPER);
+        assert(o_op_sel        == DCDR_OP_SEL_LUI);
+        assert(o_rfile_we);
+        assert(!o_dmem_re);
+        assert(!o_dmem_we);
+        assert(!o_csr_we);
+    end
+
+    // ============= AUIPC =============
+    always @* if (w_opcode == OPCODE_AUIPC) begin
+        assert(!o_ill_instrn);
+        assert(o_alu_src_a_sel == ALU_SRC_A_SEL_PC);
+        assert(o_alu_src_b_sel == ALU_SRC_B_SEL_IMM);
+        assert(o_rfile_w_sel   == RFILE_W_SEL_ALU_RESULT);
+        assert(o_alu_func_sel  == ALU_FUNC_SEL_ADD);
+        assert(o_imm_gen_sel   == IMM_GEN_SEL_UPPER);
+        assert(o_op_sel        == DCDR_OP_SEL_AUIPC);
+        assert(o_rfile_we);
+        assert(!o_dmem_re);
+        assert(!o_dmem_we);
+        assert(!o_csr_we);
+    end
+
+    // ============= JAL =============
+    always @* if (w_opcode == OPCODE_JAL) begin
+        assert(!o_ill_instrn);
+        assert(o_rfile_we);
+        assert(o_rfile_w_sel  == RFILE_W_SEL_PC_ADDR_INC);
+        assert(o_imm_gen_sel  == IMM_GEN_SEL_JUMP);
+        assert(o_addr_gen_sel == ADDR_GEN_SEL_JAL);
+        assert(o_op_sel       == DCDR_OP_SEL_JAL);
+        assert(!o_dmem_re);
+        assert(!o_dmem_we);
+        assert(!o_csr_we);
+    end
+
+    // ============= FENCE =============
+    always @* if (w_opcode == OPCODE_FENCE) begin
+        // Accept FENCE when fm[2:0]==0 and FENCE.I always
+        if (w_funct3 == FUNCT3_FENCE  && w_fm_fence[2:0]==3'b000) begin
+            assert(!o_ill_instrn);
+            assert(o_op_sel == DCDR_OP_SEL_FENCE);
+            // No external state changes
+            assert(!o_rfile_we);
+            assert(!o_dmem_re);
+            assert(!o_dmem_we);
+            assert(!o_csr_we);
+        end else begin
+            assert(o_ill_instrn);
+        end
+    end
+
+    // ============= SYSTEM (CSR + TRAPS) =============
+    always @* if (w_opcode == OPCODE_SYS) begin
+        if (w_funct3 == FUNCT3_SYS_TRAPS) begin
+            // must have rd=0 and rs1=0 per spec
+            if (w_rd_addr != 5'd0 || w_rs1_addr != 5'd0) begin
+                assert(o_ill_instrn);
+            end else begin
+                unique case ({w_funct7, w_rs2_addr})
+                    FUNCT7_RS2_SYS_ECALL  : assert(o_op_sel == DCDR_OP_SEL_ECALL  && !o_ill_instrn);
+                    FUNCT7_RS2_SYS_EBREAK : assert(o_op_sel == DCDR_OP_SEL_EBREAK && !o_ill_instrn);
+                    FUNCT7_RS2_SYS_MRET   : assert(o_op_sel == DCDR_OP_SEL_MRET   && !o_ill_instrn);
+                    FUNCT7_RS2_SYS_WFI    : assert(o_op_sel == DCDR_OP_SEL_WFI    && !o_ill_instrn);
+                    default               : assert(o_ill_instrn);
+                endcase
+                // No register/mem/csr writes for traps themselves
+                if (!o_ill_instrn) begin
+                    assert(!o_rfile_we);
+                    assert(!o_dmem_re);
+                    assert(!o_dmem_we);
+                    assert(!o_csr_we);
+                end
+            end
+        end
+        else if (csr_f3_rwgrp) begin
+            // CSR instruction
+            if (w_csr_addr_illegal) begin
+                assert(o_ill_instrn);
+            end else if (csr_write_attempt && w_csr_is_readonly) begin
+                assert(o_ill_instrn);
+            end else begin
+                assert(!o_ill_instrn);
+                assert(o_rfile_w_sel == RFILE_W_SEL_CSR_R_DATA);
+                assert(o_op_sel      == DCDR_OP_SEL_WRITE);
+                assert(o_rfile_we);
+                assert(o_csr_we == csr_write_attempt);
+                assert(!o_dmem_re);
+                assert(!o_dmem_we);
+            end
+        end
+        else begin
+            assert(o_ill_instrn);
+        end
+    end
+
+    // ============= Default opcode =============
+    always @* begin
+        case (w_opcode)
+            OPCODE_OP_REG, OPCODE_OP_IMM, OPCODE_JALR, OPCODE_LOAD,
+            OPCODE_STORE, OPCODE_BRANCH, OPCODE_LUI, OPCODE_AUIPC,
+            OPCODE_JAL, OPCODE_FENCE, OPCODE_SYS: ;
+            default: assert(o_ill_instrn);
+        endcase
+    end
+
+    // A few sanity covers to ensure we explore interesting spaces
+    // (not required, but helpful for debugging / wave dumps)
+    always @(*) begin
+        cover (w_opcode == OPCODE_LOAD  && !o_ill_instrn);
+        cover (w_opcode == OPCODE_STORE && !o_ill_instrn);
+        cover (w_opcode == OPCODE_BRANCH&& !o_ill_instrn);
+        cover (w_opcode == OPCODE_JALR  && !o_ill_instrn);
+        cover (w_opcode == OPCODE_SYS   && csr_f3_rwgrp && !o_ill_instrn);
+        cover (w_opcode == OPCODE_SYS   && w_funct3==FUNCT3_SYS_TRAPS && !o_ill_instrn);
+    end
+
 `endif
 
 endmodule

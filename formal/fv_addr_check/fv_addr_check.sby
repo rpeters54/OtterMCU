@@ -16,14 +16,13 @@ cover: mode cover
 cover: depth 20
 cover: expect pass
 
-
 [engines]
 smtbmc boolector
 
 [script]
-read -formal otter_cu_dcdr.v
-prep -top otter_cu_dcdr
+read -formal otter_addr_check.v
+prep -top otter_addr_check
 
 [files]
-../../rtl/otter_cu_dcdr.v
+../../rtl/otter_addr_check.v
 ../../rtl/otter_defines.vh
