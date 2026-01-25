@@ -15,7 +15,13 @@ SECTIONS
   .data.string : { *(.data.string)}
   . = ALIGN(0x1000);
   __bss_start = .;
-  .bss : { *(.bss) }
+  .bss : { 
+      *(.bss)
+      *(.bss.*)
+      *(.sbss)
+      *(.sbss.*)
+      *(COMMON)
+  }
   __bss_end = .;
   _end = .;
 }

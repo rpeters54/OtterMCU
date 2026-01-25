@@ -7,15 +7,15 @@ RTL_DIRS	 := $(sort $(dir $(RTL_SRCS)))
 LINT_INCLUDES := $(foreach dir, $(INCLUDE_DIRS) $(RTL_DIRS), -I$(realpath $(dir)))
 
 TEST_DIR = ./tests
-TEST_SUBDIRS = $(shell cd $(TEST_DIR) && ls -d */ | grep -v "__pycache__" )
+TEST_SUBDIRS = $(shell cd $(TEST_DIR) && ls -d tb_*/ 2>/dev/null)
 TESTS = $(TEST_SUBDIRS:/=)
 
 FORMAL_DIR = ./formal
-FORMAL_SUBDIRS = $(shell cd $(FORMAL_DIR) && ls -d */ | grep -v "__pycache__" )
+FORMAL_SUBDIRS = $(shell cd $(FORMAL_DIR) && ls -d fv_*/ 2>/dev/null)
 FORMAL_TESTS = $(FORMAL_SUBDIRS:/=)
 
 FW_DIR = ./fw
-FW_SUBDIRS = $(shell cd $(FW_DIR) && ls -d */ | grep -v "__pycache__" )
+FW_SUBDIRS = $(shell cd $(FW_DIR) && ls -d fw_*/ 2>/dev/null)
 FW_TESTS = $(FW_SUBDIRS:/=)
 
 # Main Linter and Simulatior is Verilator
@@ -29,8 +29,9 @@ SIMULATOR_SRCS := *.sv
 # Firmware Compilation Args
 CC := riscv32-unknown-elf-gcc
 CC_ARGS := -nostdlib
-CC_LINKER_SCRIPT := link.ld
-CC_SRCS := *.s *.c
+CC_LINKER_SCRIPT := ../common/link.ld
+CC_DRIVER_SOURCE := ../common/main.s
+CC_SRCS_CMD := find . -maxdepth 1 -name "*.s" -o -name "*.c"
 OBJCOPY := riscv32-unknown-elf-objcopy
 OBJCOPY_ARGS := -O verilog --verilog-data-width=4 --change-addresses -0x80000000
 
@@ -43,7 +44,7 @@ JOB_TYPES = bmc prove cover
 # Optional use of Icarus as Linter and Simulator
 ifdef ICARUS
 SIMULATOR := iverilog
-SIMULATOR_ARGS := -g2012 -grelative-include
+SIMULATOR_ARGS := -g2012 -grelative-include -pfileline=1
 SIMULATOR_BINARY := a.out
 SIMULATOR_RUNNER := vvp
 SIMULATOR_SRCS = $(foreach src, $(RTL_SRCS), $(realpath $(src))) $@.sv
@@ -147,8 +148,8 @@ $(FW_TESTS):
 
 # Compiling Firmware .hex
 	@printf "\n$(BOLD) Compiling with $(CC)... $(RESET)\n"
-	@cd $(FW_DIR)/$@; \
-		$(CC) $(CC_ARGS) -T $(CC_LINKER_SCRIPT) -o $@.elf $(CC_SRCS) >> fw.log
+	cd $(FW_DIR)/$@; \
+		$(CC) $(CC_ARGS) -T $(CC_LINKER_SCRIPT) -o $@.elf $(CC_DRIVER_SOURCE) $$($(CC_SRCS_CMD)) >> fw.log
 	@cd $(FW_DIR)/$@; \
 		$(OBJCOPY) $(OBJCOPY_ARGS) $@.elf $@.hex >> hex.log
 
